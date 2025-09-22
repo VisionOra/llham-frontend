@@ -81,6 +81,13 @@ export function ChatInterface({
     endSession
   } = useWebSocket()
 
+  // Check if there's a streaming message (incomplete)
+  const isStreaming = messages.some(msg => 
+    msg.type === 'ai' && 
+    msg.id.startsWith('streaming-') && 
+    !msg.suggestions // Complete messages have suggestions
+  )
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -402,12 +409,15 @@ export function ChatInterface({
                     
                     {/* Regular content for non-user messages */}
                     {message.type !== "user" && (
-                      <div className="relative">
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-                        {/* Streaming cursor indicator - only for AI messages */}
-                        {/* {message.type === "ai" && message.isStreaming === true && (
-                          <span className="inline-block w-2 h-5 bg-blue-400 ml-1 animate-pulse"></span>
-                        )} */}
+
+                      <div>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {message.content}
+                          {/* Show typing cursor for streaming messages */}
+                          {message.id.startsWith('streaming-') && !message.suggestions && (
+                            <span className="inline-block w-2 h-4 bg-green-400 ml-1 animate-pulse"></span>
+                          )}
+                        </p>
                       </div>
                     )}
                     

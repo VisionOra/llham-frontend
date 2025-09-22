@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Plus, User, Clock, LogOut, MessageSquare, FileText } from "lucide-react"
+import { Search, Plus, User, Clock, LogOut, MessageSquare, FileText, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { getProjectSessions, getDocumentContent, createSession, createProjectWithSession, type Session as ApiSession, type ProjectWithSessions, type CreateSessionRequest, type CreateProjectWithSessionRequest } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
@@ -64,6 +64,7 @@ export default function IlhamApp() {
   const [showSessionsList, setShowSessionsList] = useState(false)
   const [loadingDocument, setLoadingDocument] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+  const [creatingSession, setCreatingSession] = useState(false)
 
   const {
     suggestions,
@@ -259,7 +260,7 @@ export default function IlhamApp() {
       handleSessionCardClick(session)
     } else {
       // Fallback to old behavior if session not found
-      setSelectedSession(sessionId)
+    setSelectedSession(sessionId)
       setShowWelcome(false)
       setShowSessionsList(false)
 
@@ -297,7 +298,7 @@ export default function IlhamApp() {
     setSelectedSession(session.id)
     setShowSessionsList(false)
     setShowWelcome(false)
-    
+
     // Start WebSocket session (this will load previous messages)
     startSession(session.id, selectedProject)
     
@@ -508,6 +509,16 @@ export default function IlhamApp() {
   // Use WebSocket document if available, otherwise use local document
   const documentToDisplay = wsCurrentDocument || currentDocument
 
+  // Watch for WebSocket document generation and switch layout
+  useEffect(() => {
+    if (wsCurrentDocument && !hasDocument) {
+      console.log('[v0] WebSocket document generated, switching to document view')
+      setHasDocument(true)
+      setShowWelcome(false)
+      setShowSessionsList(false)
+    }
+  }, [wsCurrentDocument, hasDocument])
+
   // Use the latest edit suggestion from WebSocket context (no longer from messages)
 
   const handleNewChatClick = () => {
@@ -672,10 +683,31 @@ export default function IlhamApp() {
           <div className="flex-1 p-8">
             <div className="max-w-4xl mx-auto">
               <div className="mb-6">
-                <h1 className="text-2xl font-semibold text-white mb-2">
-                  {projects.find(p => p.id === selectedProject)?.title}
-                </h1>
-                <p className="text-gray-400">Choose a session to continue or start a new conversation</p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h1 className="text-2xl font-semibold text-white mb-2">
+                      {projects.find(p => p.id === selectedProject)?.title}
+                    </h1>
+                    <p className="text-gray-400">Choose a session to continue or start a new conversation</p>
+                  </div>
+                  <Button 
+                    onClick={handleNewSessionInProject}
+                    disabled={creatingSession}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {creatingSession ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Session
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {loadingSessions ? (
@@ -689,10 +721,20 @@ export default function IlhamApp() {
                   <p className="text-gray-400 mb-6">Start your first conversation in this project</p>
                   <Button 
                     onClick={handleNewSessionInProject}
+                    disabled={creatingSession}
                     className="bg-white text-black hover:bg-gray-200"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Session
+                    {creatingSession ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating Session...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Session
+                      </>
+                    )}
                   </Button>
                 </div>
               ) : (
