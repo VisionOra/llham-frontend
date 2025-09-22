@@ -29,6 +29,9 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined)
 
 export function WebSocketProvider({ children }: { children: ReactNode }) {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  const lastConnectionAttempt = useRef<number>(0)
+  const connectionTimeout = useRef<NodeJS.Timeout | null>(null)
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -41,6 +44,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [latestEditSuggestion, setLatestEditSuggestion] = useState<ChatMessage | null>(null)
   const [isTyping, setIsTyping] = useState(false)
+  const [currentStreamingMessage, setCurrentStreamingMessage] = useState<ChatMessage | null>(null)
   
   const reconnectAttempts = useRef(0)
   const maxReconnectAttempts = 5
@@ -53,7 +57,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
     try {
       console.log('📄 Fetching generated document for session:', sessionId)
-      const response = await fetch(`http://192.168.1.105:8000/documents/${sessionId}/`, {
+  const response = await fetch(`${API_BASE_URL}/documents/${sessionId}/`, {
         headers: {
           'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
           'Content-Type': 'application/json',
@@ -115,8 +119,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
 
     setConnectionStatus('connecting')
-    // const wsUrl = `wss://api.llham.com/ws/chat/?token=${token}`
-    const wsUrl = `ws://192.168.1.105:8000/ws/chat/?token=${token}`
+  const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || API_BASE_URL.replace(/^http/, "ws");
+  const wsUrl = `${WS_BASE_URL}/ws/chat/?token=${token}`
     console.log('[WebSocket] Connecting to:', wsUrl)
 
     try {
@@ -236,17 +240,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               setIsTyping(true)
               currentMessageRef.current = ''
               currentMessageIdRef.current = Date.now().toString()
-              
-              // Add an empty message that will be updated
-              setMessages(prev => [...prev, {
-                id: currentMessageIdRef.current!,
-                type: 'ai',
-                content: '',
-                timestamp: new Date(),
-                sessionId: data.session_id,
-                projectId: data.project_id,
-                isStreaming: true
-              }])
+              // Do not add empty message here
               break
 
             case 'ai_message_chunk':
@@ -393,7 +387,12 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
             case 'edit_applied':
               console.log('✅ Edit applied successfully')
-              // Document should already be updated locally
+              // Fetch the updated document since it's not included in the message
+              if (data.session_id) {
+                console.log('📄 Fetching updated document after edit_applied')
+                fetchGeneratedDocument(data.session_id)
+              }
+              
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 type: 'ai',
@@ -402,6 +401,36 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 sessionId: data.session_id,
                 isStreaming: false
               }])
+              break
+
+            case 'document_updated':
+            case 'proposal_updated':
+              console.log('📄 Document/Proposal updated:', data)
+              if (data.document) {
+                setCurrentDocument({
+                  id: data.document_id || data.session_id,
+                  title: data.proposal_title || data.title || 'Updated Document',
+                  content: data.document,
+                  created_at: data.created_at || new Date().toISOString(),
+                  updated_at: data.updated_at || new Date().toISOString(),
+                  author: data.author || 'AI Assistant'
+                })
+                console.log('📄 Document updated with new content')
+              } else if (data.session_id) {
+                // Fetch the updated document if document content not provided
+                fetchGeneratedDocument(data.session_id)
+              }
+              
+              if (data.message) {
+                setMessages(prev => [...prev, {
+                  id: Date.now().toString(),
+                  type: 'ai',
+                  content: data.message,
+                  timestamp: new Date(),
+                  sessionId: data.session_id,
+                  isStreaming: false
+                }])
+              }
               break
 
             case 'edit_rejected':
@@ -441,7 +470,19 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             default:
-              console.log('Unknown message type:', data.type)
+              console.log('Unknown message type:', data.type, 'Data:', data)
+              // Check if this unknown message contains document updates
+              if (data.document || data.proposal_content || data.html_content) {
+                console.log('📄 Found document content in unknown message type, updating document')
+                setCurrentDocument({
+                  id: data.document_id || data.session_id || Date.now().toString(),
+                  title: data.proposal_title || data.title || currentDocument?.title || 'Updated Document',
+                  content: data.document || data.proposal_content || data.html_content,
+                  created_at: data.created_at || currentDocument?.created_at || new Date().toISOString(),
+                  updated_at: data.updated_at || new Date().toISOString(),
+                  author: data.author || currentDocument?.author || 'AI Assistant'
+                })
+              }
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error)

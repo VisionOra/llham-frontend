@@ -278,7 +278,7 @@ export async function getUserProjects(): Promise<Project[]> {
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       console.log('[API] Redirect detected, trying direct backend call...');
       try {
-        const directResponse = await axios.get<Project[]>('http://192.168.1.105:8000/projects/', {
+        const directResponse = await axios.get<Project[]>(`${API_BASE_URL}/projects/`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -339,7 +339,7 @@ export async function getProjectSessions(projectId: string): Promise<ProjectWith
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       console.log('[API] Redirect detected, trying direct backend call for sessions...');
       try {
-        const directResponse = await axios.get<ProjectWithSessions>(`http://192.168.1.105:8000/api/proposals/projects/${projectId}/sessions/`, {
+        const directResponse = await axios.get<ProjectWithSessions>(`${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -430,7 +430,7 @@ export async function getDocumentContent(sessionId: string): Promise<any> {
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       console.log('[API] Redirect detected, trying direct backend call for document...');
       try {
-        const directResponse = await axios.get(`http://192.168.1.105:8000/api/proposals/sessions/${sessionId}/document/`, {
+        const directResponse = await axios.get(`${API_BASE_URL}/api/proposals/sessions/${sessionId}/document/`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -467,7 +467,7 @@ export async function getSessionHistory(sessionId: string): Promise<any> {
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       console.log('[API] Redirect detected, trying direct backend call for session history...');
       try {
-        const directResponse = await axios.post(`http://192.168.1.105:8000/api/proposals/sessions/${sessionId}/resume/`, {}, {
+        const directResponse = await axios.post(`${API_BASE_URL}/api/proposals/sessions/${sessionId}/resume/`, {}, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -508,7 +508,7 @@ export async function createSession(sessionData: CreateSessionRequest): Promise<
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       console.log('[API] Redirect detected, trying direct backend call for session creation...');
       try {
-        const directResponse = await axios.post(`http://192.168.1.105:8000/api/proposals/sessions/`, sessionData, {
+        const directResponse = await axios.post(`${API_BASE_URL}/api/proposals/sessions/`, sessionData, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -529,6 +529,50 @@ export async function createSession(sessionData: CreateSessionRequest): Promise<
       throw error;
     }
     throw new Error("Failed to create session. Please try again.");
+  }
+}
+
+// Delete Project
+export async function deleteProject(projectId: string): Promise<void> {
+  try {
+    const token = TokenManager.getAccessToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    await projectApi.delete(`/api/proposals/projects/${projectId}/`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  } catch (error) {
+    console.error('Delete project error:', error);
+    if (error instanceof AxiosError) {
+      throw new Error(error.response?.data?.message || 'Failed to delete project');
+    }
+    throw new Error("Failed to delete project. Please try again.");
+  }
+}
+
+// Delete Session
+export async function deleteSession(sessionId: string): Promise<void> {
+  try {
+    const token = TokenManager.getAccessToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    await projectApi.delete(`/api/proposals/sessions/${sessionId}/`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  } catch (error) {
+    console.error('Delete session error:', error);
+    if (error instanceof AxiosError) {
+      throw new Error(error.response?.data?.message || 'Failed to delete session');
+    }
+    throw new Error("Failed to delete session. Please try again.");
   }
 }
 

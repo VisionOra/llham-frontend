@@ -13,9 +13,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Search, Plus, User, Clock, LogOut, MessageSquare, FileText, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { getProjectSessions, getDocumentContent, createSession, createProjectWithSession, type Session as ApiSession, type ProjectWithSessions, type CreateSessionRequest, type CreateProjectWithSessionRequest } from "@/lib/api"
+import { getProjectSessions, getDocumentContent, createSession, createProjectWithSession, deleteProject, deleteSession, type Session as ApiSession, type ProjectWithSessions, type CreateSessionRequest, type CreateProjectWithSessionRequest } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
-import { useEffect } from "react"
+import { useEffect, useRef, useCallback } from "react"
 
 // Local Session interface that matches what ProjectSidebar expects
 interface LocalSession {
@@ -41,7 +41,7 @@ interface LocalSession {
 
 export default function IlhamApp() {
   const { user, isAuthenticated, logout } = useAuth()
-  const { projects, currentProject, selectProject, createProject } = useProjects()
+  const { projects, currentProject, selectProject, createProject, refreshProjects } = useProjects()
   const { 
     currentDocument: wsCurrentDocument, 
     messages: wsMessages,
@@ -65,6 +65,7 @@ export default function IlhamApp() {
   const [loadingDocument, setLoadingDocument] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [creatingSession, setCreatingSession] = useState(false)
+  const cleanupDoneRef = useRef(false) // Track if cleanup has already been done
 
   const {
     suggestions,
@@ -106,6 +107,48 @@ export default function IlhamApp() {
       return () => clearTimeout(timeoutId)
     }
   }, [activeSessionId, pendingMessage, selectedSession, sendMessage])
+
+  // Cleanup projects with 0 sessions on app load (run only once)
+  useEffect(() => {
+    const cleanupEmptyProjects = async () => {
+      if (!projects || projects.length === 0 || !isAuthenticated || cleanupDoneRef.current) return
+      
+      console.log("[v0] Checking for projects with 0 sessions to cleanup...")
+      cleanupDoneRef.current = true // Mark cleanup as done to prevent re-runs
+      
+      let hasDeletedProjects = false
+      
+      for (const project of projects) {
+        try {
+          const projectWithSessions = await getProjectSessions(project.id)
+          
+          // If project has 0 sessions, delete the project
+          if (projectWithSessions.sessions.length === 0) {
+            try {
+              console.log(`[v0] Cleanup: Deleting project with 0 sessions: ${project.id}`)
+              await deleteProject(project.id)
+              hasDeletedProjects = true
+            } catch (error) {
+              console.error(`[v0] Cleanup: Failed to delete project ${project.id}:`, error)
+            }
+          }
+        } catch (error) {
+          console.error(`[v0] Cleanup: Failed to load sessions for project ${project.id}:`, error)
+        }
+      }
+      
+      // Only refresh if we actually deleted projects
+      if (hasDeletedProjects) {
+        console.log("[v0] Cleanup: Refreshing projects after deletion")
+        await refreshProjects()
+      }
+    }
+    
+    // Run cleanup when projects are loaded and user is authenticated (but only once)
+    if (isAuthenticated && projects.length > 0 && !cleanupDoneRef.current) {
+      cleanupEmptyProjects()
+    }
+  }, [projects, isAuthenticated]) // Removed refreshProjects from dependencies
 
   const handleNewChat = async (message: string) => {
     try {
@@ -163,11 +206,12 @@ export default function IlhamApp() {
             try {
               // Create session in the project
               const sessionData: CreateSessionRequest = {
+                project_id: currentProj.id,
                 initial_idea: message,
                 agent_mode: "conversation"
               }
               
-              const newSession = await createSession(currentProj.id, sessionData)
+              const newSession = await createSession(sessionData)
               
               setSelectedSession(newSession.id)
               setShowWelcome(false)
@@ -222,23 +266,46 @@ export default function IlhamApp() {
       setLoadingSessions(true)
       try {
         const projectWithSessions = await getProjectSessions(projectId)
-        // Map API Session to component Session format
-        const mappedSessions: LocalSession[] = projectWithSessions.sessions.map((session) => ({
-          id: session.id,
-          project_id: session.project.id,
-          title: session.proposal_title || session.initial_idea || 'Untitled Session',
-          initial_idea: session.initial_idea,
-          agent_mode: session.agent_mode,
-          has_document: !!session.document || session.is_proposal_generated,
-          document: session.document,
-          created_at: session.created_at,
-          updated_at: session.updated_at,
-          proposal_title: session.proposal_title,
-          current_stage: session.current_stage,
-          is_proposal_generated: session.is_proposal_generated,
-          conversation_history: session.conversation_history,
-          user: session.user
-        }))
+        
+        // Clean up sessions with 0 messages
+        const sessionsToDelete: string[] = []
+        const validSessions = projectWithSessions.sessions.filter((session) => {
+          if (session.conversation_history.length === 0) {
+            sessionsToDelete.push(session.id)
+            return false
+          }
+          return true
+        })
+        
+        // Delete sessions with 0 messages
+        for (const sessionId of sessionsToDelete) {
+          try {
+            console.log(`Deleting empty session: ${sessionId}`)
+            await deleteSession(sessionId)
+          } catch (error) {
+            console.error(`Failed to delete session ${sessionId}:`, error)
+          }
+        }
+        
+        // Only delete sessions with 0 messages, do not delete project
+        const mappedSessions: LocalSession[] = validSessions.map((session) => {
+          return {
+            id: session.id,
+            project_id: session.project.id,
+            title: session.proposal_title || session.initial_idea || 'Untitled Session',
+            initial_idea: session.initial_idea,
+            agent_mode: session.agent_mode,
+            has_document: !!session.document || session.is_proposal_generated,
+            document: session.document,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+            proposal_title: session.proposal_title,
+            current_stage: session.current_stage,
+            is_proposal_generated: session.is_proposal_generated,
+            conversation_history: session.conversation_history,
+            user: session.user
+          }
+        })
         setProjectSessions(mappedSessions)
       } catch (error) {
         console.error('Failed to load project sessions:', error)
@@ -506,6 +573,45 @@ export default function IlhamApp() {
     setShowSessionsList(false)
   }
 
+  // Function to refresh document content from API
+  const refreshDocumentContent = useCallback(async () => {
+    if (!selectedSession || !hasDocument) return
+    
+    console.log("[v0] Refreshing document content for session:", selectedSession)
+    try {
+      const documentContent = await getDocumentContent(selectedSession)
+      console.log("[v0] Refreshed document content:", documentContent)
+      
+      const refreshedDocument = {
+        id: documentContent.id || selectedSession,
+        title: documentContent.title || currentDocument?.title || 'Document',
+        content: documentContent.document || documentContent.content || documentContent.html_content || documentContent.body,
+        created_at: documentContent.created_at || currentDocument?.created_at,
+        updated_at: documentContent.updated_at || new Date().toISOString(),
+        author: documentContent.created_by || currentDocument?.author || 'AI Assistant'
+      }
+      
+      setCurrentDocument(refreshedDocument)
+      console.log("[v0] Document refreshed successfully")
+    } catch (error) {
+      console.error("[v0] Failed to refresh document:", error)
+    }
+  }, [selectedSession, hasDocument, currentDocument])
+
+  // Watch for new AI messages and refresh document if in document mode
+  useEffect(() => {
+    if (hasDocument && wsMessages.length > 0) {
+      const lastMessage = wsMessages[wsMessages.length - 1]
+      if (lastMessage.type === 'ai' && !lastMessage.isStreaming) {
+        console.log("[v0] AI message completed, refreshing document")
+        // Small delay to ensure backend has processed the update
+        setTimeout(() => {
+          refreshDocumentContent()
+        }, 1000)
+      }
+    }
+  }, [wsMessages, hasDocument, refreshDocumentContent])
+
   // Use WebSocket document if available, otherwise use local document
   const documentToDisplay = wsCurrentDocument || currentDocument
 
@@ -518,6 +624,24 @@ export default function IlhamApp() {
       setShowSessionsList(false)
     }
   }, [wsCurrentDocument, hasDocument])
+
+  // Watch for WebSocket document updates and refresh local document
+  useEffect(() => {
+    if (wsCurrentDocument && hasDocument) {
+      console.log('[v0] WebSocket document updated, refreshing document viewer')
+      console.log('[v0] New document content:', wsCurrentDocument)
+      // Force update by updating the local currentDocument
+      setCurrentDocument(wsCurrentDocument)
+    }
+  }, [wsCurrentDocument, hasDocument])
+
+  // Debug: Log document changes
+  useEffect(() => {
+    console.log('[v0] Document state changed:')
+    console.log('  - wsCurrentDocument:', !!wsCurrentDocument, wsCurrentDocument?.id)
+    console.log('  - currentDocument:', !!currentDocument, currentDocument?.id)
+    console.log('  - documentToDisplay:', !!documentToDisplay, documentToDisplay?.id)
+  }, [wsCurrentDocument, currentDocument, documentToDisplay])
 
   // Use the latest edit suggestion from WebSocket context (no longer from messages)
 
@@ -544,11 +668,12 @@ export default function IlhamApp() {
         
         // Create a real session in the selected project
         const sessionData: CreateSessionRequest = {
+          project_id: selectedProject,
           initial_idea: "New conversation",
           agent_mode: "conversation"
         }
         
-        const newSession = await createSession(selectedProject, sessionData)
+        const newSession = await createSession(sessionData)
         console.log('[v0] New session created:', newSession)
         
         setSelectedSession(newSession.id)
@@ -634,7 +759,7 @@ export default function IlhamApp() {
         </div>
 
         {/* Projects List */}
-        <div className="flex-1 h-[60dvh] px-4">
+        <div className="flex-1 min-h-[60dvh] px-4">
           <ProjectSidebar
             sessions={projectSessions}
             selectedProject={selectedProject}

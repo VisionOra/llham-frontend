@@ -255,7 +255,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a]">
+    <div className="flex flex-col h-full bg-[#0a0a0a] w-[50dvw]">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-[#2a2a2a]">
         <div className="flex items-center space-x-3">
@@ -336,7 +336,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
       </div>
 
       {/* Document Content */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 ">
         <div className="p-8">
           <div
             ref={contentRef}
