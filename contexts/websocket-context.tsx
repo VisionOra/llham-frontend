@@ -16,6 +16,7 @@ interface WebSocketContextType {
   agentMode: string
   activeSessionId: string | null
   latestEditSuggestion: ChatMessage | null
+  isTyping: boolean
   sendMessage: (message: string, documentContext?: string | null) => void
   acceptEdit: (editId: string) => void
   rejectEdit: (editId: string) => void
@@ -39,9 +40,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [latestEditSuggestion, setLatestEditSuggestion] = useState<ChatMessage | null>(null)
+  const [isTyping, setIsTyping] = useState(false)
   
   const reconnectAttempts = useRef(0)
   const maxReconnectAttempts = 5
+  const currentMessageRef = useRef<string>('')
+  const currentMessageIdRef = useRef<string | null>(null)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const connect = useCallback(() => {
     const token = TokenManager.getAccessToken()
@@ -88,9 +93,77 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 sessionId: data.session_id,
                 projectId: data.project_id,
                 suggestedQuestions: data.suggested_questions,
-                suggestions: data.suggested_questions
+                suggestions: data.suggested_questions,
+                isStreaming: false
               }])
               setAgentMode(data.agent_mode || 'conversation')
+              setIsTyping(false)
+              break
+
+            case 'ai_message_start':
+              // Start of streaming message
+              setIsTyping(true)
+              currentMessageRef.current = ''
+              currentMessageIdRef.current = Date.now().toString()
+              
+              // Add an empty message that will be updated
+              setMessages(prev => [...prev, {
+                id: currentMessageIdRef.current!,
+                type: 'ai',
+                content: '',
+                timestamp: new Date(),
+                sessionId: data.session_id,
+                projectId: data.project_id,
+                isStreaming: true
+              }])
+              break
+
+            case 'ai_message_chunk':
+              // Chunk of streaming message
+              if (currentMessageIdRef.current) {
+                currentMessageRef.current += data.chunk
+                
+                setMessages(prev => prev.map(msg => 
+                  msg.id === currentMessageIdRef.current
+                    ? { ...msg, content: currentMessageRef.current, isStreaming: true }
+                    : msg
+                ))
+                
+                // Reset typing timeout
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current)
+                }
+                
+                typingTimeoutRef.current = setTimeout(() => {
+                  setIsTyping(false)
+                }, 1000)
+              }
+              break
+
+            case 'ai_message_end':
+              // End of streaming message
+              setIsTyping(false)
+              if (currentMessageIdRef.current) {
+                setMessages(prev => prev.map(msg => 
+                  msg.id === currentMessageIdRef.current
+                    ? { 
+                        ...msg, 
+                        content: currentMessageRef.current,
+                        isStreaming: false,
+                        suggestedQuestions: data.suggested_questions,
+                        suggestions: data.suggested_questions
+                      }
+                    : msg
+                ))
+                currentMessageIdRef.current = null
+                currentMessageRef.current = ''
+              }
+              setAgentMode(data.agent_mode || 'conversation')
+              
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current)
+                typingTimeoutRef.current = null
+              }
               break
 
             case 'title_generated':
@@ -108,7 +181,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 content: data.message,
                 timestamp: new Date(),
                 sessionId: data.session_id,
-                projectId: data.project_id
+                projectId: data.project_id,
+                isStreaming: false
               }])
               break
 
@@ -172,7 +246,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 type: 'ai',
                 content: data.message || 'Changes have been applied to your document successfully!',
                 timestamp: new Date(),
-                sessionId: data.session_id
+                sessionId: data.session_id,
+                isStreaming: false
               }])
               break
 
@@ -183,7 +258,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 type: 'ai',
                 content: data.message || 'Edit suggestion has been rejected.',
                 timestamp: new Date(),
-                sessionId: data.session_id
+                sessionId: data.session_id,
+                isStreaming: false
               }])
               break
 
@@ -290,7 +366,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         content: displayMessage,
         timestamp: new Date(),
         sessionId: activeSessionId || undefined,
-        projectId: activeProjectId || undefined
+        projectId: activeProjectId || undefined,
+        isStreaming: false
       }])
     } else {
       console.error('WebSocket not connected or no active session')
@@ -496,6 +573,11 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       setSocket(null)
     }
     
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = null
+    }
+    
     setActiveSessionId(null)
     setActiveProjectId(null)
     setConnectionStatus('disconnected')
@@ -505,6 +587,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setCurrentStage(null)
     setProgress(0)
     setAgentMode('conversation')
+    setIsTyping(false)
+    currentMessageRef.current = ''
+    currentMessageIdRef.current = null
   }, [socket])
 
   const clearMessages = useCallback(() => {
@@ -517,6 +602,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       if (socket) {
         console.log('🔌 Context cleanup: Closing WebSocket connection')
         socket.close(1000)
+      }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
       }
     }
   }, [socket])
@@ -531,6 +619,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     agentMode,
     activeSessionId,
     latestEditSuggestion,
+    isTyping,
     sendMessage,
     acceptEdit,
     rejectEdit,

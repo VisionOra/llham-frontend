@@ -317,7 +317,7 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
         variant="outline"
         size="sm"
         onClick={() => fileInputRef.current?.click()}
-        className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a]"
+        className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a] hover:text-white"
       >
         <Paperclip className="w-4 h-4" />
       </Button>

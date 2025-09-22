@@ -32,6 +32,14 @@ interface UploadedFile {
   error?: string
 }
 
+interface FormattedMessage {
+  isPastedContent: boolean
+  pastedText?: string
+  userRequest?: string
+  preview?: string
+  originalMessage?: string
+}
+
 interface ChatInterfaceProps {
   sessionId: string | null
   projectId: string | null
@@ -64,6 +72,7 @@ export function ChatInterface({
     currentDocument,
     agentMode,
     activeSessionId,
+    isTyping,
     sendMessage,
     acceptEdit,
     rejectEdit,
@@ -119,7 +128,7 @@ export function ChatInterface({
     return hasDocumentPatterns && (hasColons || hasEditKeywords)
   }
 
-  const formatMessageForDisplay = (message: string) => {
+  const formatMessageForDisplay = (message: string): FormattedMessage => {
     console.log('[ChatInterface] Analyzing message:', message)
     console.log('[ChatInterface] Is pasted content:', detectPastedContent(message))
     
@@ -182,7 +191,7 @@ export function ChatInterface({
     
     setInputValue("")
     
-    if (formatted.isPastedContent) {
+    if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText) {
       // Send with document_context and clean message
       console.log('[ChatInterface] Sending edit request:', {
         message: formatted.userRequest,
@@ -333,9 +342,7 @@ export function ChatInterface({
                       ? "bg-green-700"
                       : message.type === "ai"
                         ? "bg-gray-700"
-                        : message.type === "file"
-                          ? "bg-blue-700"
-                          : "bg-blue-700"
+                        : "bg-blue-700"
                   }`}
                 >
                   {message.type === "user" ? (
@@ -367,7 +374,7 @@ export function ChatInterface({
                     {/* Cursor AI style display for user messages with pasted content */}
                     {message.type === "user" && (() => {
                       const formatted = formatMessageForDisplay(message.content)
-                      if (formatted.isPastedContent) {
+                      if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText && formatted.preview) {
                         return (
                           <div className="space-y-2">
                             {/* User's request */}
@@ -395,7 +402,13 @@ export function ChatInterface({
                     
                     {/* Regular content for non-user messages */}
                     {message.type !== "user" && (
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      <div className="relative">
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                        {/* Streaming cursor indicator - only for AI messages */}
+                        {/* {message.type === "ai" && message.isStreaming === true && (
+                          <span className="inline-block w-2 h-5 bg-blue-400 ml-1 animate-pulse"></span>
+                        )} */}
+                      </div>
                     )}
                     
                     {/* Edit suggestion with original/proposed content - Cursor AI style */}
@@ -530,6 +543,27 @@ export function ChatInterface({
             </div>
           )}
 
+          {/* AI Typing Indicator */}
+          {isTyping && (
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="inline-block p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                    <span className="text-sm text-gray-400">AI is typing...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Connection status indicator */}
           {connectionStatus !== 'connected' && (
             <div className="flex items-start space-x-3">
@@ -554,7 +588,7 @@ export function ChatInterface({
 
       {/* Input Area */}
       <div className="p-4 border-t border-[#2a2a2a]">
-        <div className="flex items-end space-x-2">
+        <div className="flex items-center space-x-2 justify-center">
           <FileUploadButton onFileUploaded={handleFileUploaded} />
 
           <div className="flex-1">
@@ -566,7 +600,7 @@ export function ChatInterface({
               placeholder={
                 isDocumentMode ? "Paste selected text and add your request (e.g., 'make it more concise', 'modify this section')..." : "Tell me about your project idea..."
               }
-              className="min-h-[44px] max-h-32 resize-none bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-400 focus:border-green-600 focus:ring-green-600"
+              className="min-h-[44px] max-h-32 resize-none bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-400  "
               rows={1}
             />
           </div>
