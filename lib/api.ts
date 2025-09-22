@@ -416,42 +416,6 @@ export async function createProjectWithSession(data: CreateProjectWithSessionReq
   }
 }
 
-export async function createSession(projectId: string, sessionData: CreateSessionRequest): Promise<Session> {
-  try {
-    console.log('[API] Creating session for project:', projectId, 'with data:', sessionData);
-    const response = await projectApi.post<Session>(`/api/proposals/projects/${projectId}/sessions/`, sessionData);
-    console.log('[API] Create session response:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('[API] Create session error:', error);
-    
-    // If it's a redirect error, try the direct approach
-    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      console.log('[API] Redirect detected, trying direct backend call for create session...');
-      try {
-        const directResponse = await axios.post<Session>(`${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/`, sessionData, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
-            'ngrok-skip-browser-warning': 'true',
-          },
-          timeout: 10000,
-        });
-        console.log('[API] Direct create session call successful:', directResponse.data);
-        return directResponse.data;
-      } catch (directError) {
-        console.error('[API] Direct create session call also failed:', directError);
-        throw new Error("Failed to create session. Please try again.");
-      }
-    }
-    
-    if (error instanceof Error && error.message.includes("session has expired")) {
-      throw error;
-    }
-    throw new Error("Failed to create session. Please try again.");
-  }
-}
 
 export async function getDocumentContent(sessionId: string): Promise<any> {
   try {
