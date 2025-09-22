@@ -11,9 +11,9 @@ import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Plus, User, Clock, LogOut, MessageSquare, FileText } from "lucide-react"
+import { Search, Plus, User, Clock, LogOut, MessageSquare, FileText, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { getProjectSessions, getDocumentContent, type Session, type ProjectWithSessions } from "@/lib/api"
+import { getProjectSessions, getDocumentContent, createSession, type Session, type ProjectWithSessions, type CreateSessionRequest } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
 import { useEffect } from "react"
 
@@ -39,6 +39,7 @@ export default function IlhamApp() {
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [showSessionsList, setShowSessionsList] = useState(false)
   const [loadingDocument, setLoadingDocument] = useState(false)
+  const [creatingSession, setCreatingSession] = useState(false)
 
   const {
     suggestions,
@@ -101,7 +102,7 @@ export default function IlhamApp() {
       handleSessionCardClick(session)
     } else {
       // Fallback to old behavior if session not found
-      setSelectedSession(sessionId)
+    setSelectedSession(sessionId)
       setShowWelcome(false)
       setShowSessionsList(false)
 
@@ -136,7 +137,7 @@ export default function IlhamApp() {
     setSelectedSession(session.id)
     setShowSessionsList(false)
     setShowWelcome(false)
-    
+
     // Start WebSocket session (this will load previous messages)
     startSession(session.id, selectedProject)
     
@@ -347,6 +348,16 @@ export default function IlhamApp() {
   // Use WebSocket document if available, otherwise use local document
   const documentToDisplay = wsCurrentDocument || currentDocument
 
+  // Watch for WebSocket document generation and switch layout
+  useEffect(() => {
+    if (wsCurrentDocument && !hasDocument) {
+      console.log('[v0] WebSocket document generated, switching to document view')
+      setHasDocument(true)
+      setShowWelcome(false)
+      setShowSessionsList(false)
+    }
+  }, [wsCurrentDocument, hasDocument])
+
   // Use the latest edit suggestion from WebSocket context (no longer from messages)
 
   const handleNewChatClick = () => {
@@ -363,20 +374,44 @@ export default function IlhamApp() {
   }
 
   const handleNewSessionInProject = async () => {
-    if (selectedProject) {
-      // Generate a temporary session ID for new session
-      const tempSessionId = `temp-${Date.now()}`
+    if (!selectedProject) return
+
+    setCreatingSession(true)
+    
+    try {
+      console.log('[v0] Creating new session for project:', selectedProject)
       
-      setSelectedSession(tempSessionId)
+      // Call API to create new session
+      const sessionData: CreateSessionRequest = {
+        project_id: selectedProject
+      }
+      
+      const newSession = await createSession(sessionData)
+      console.log('[v0] New session created:', newSession)
+      
+      // Navigate to the new session
+      setSelectedSession(newSession.id || newSession.session_id)
       setHasDocument(false)
       setCurrentDocument(null)
       setShowWelcome(false)
       setShowSessionsList(false)
       
-      // Start WebSocket session for new session
-      startSession(tempSessionId, selectedProject)
+      // Start WebSocket session for the new session
+      startSession(newSession.id || newSession.session_id, selectedProject)
       
-      console.log('[v0] Starting new session in project:', selectedProject)
+      // Refresh sessions list to include the new session
+      try {
+        const projectWithSessions = await getProjectSessions(selectedProject)
+        setProjectSessions(projectWithSessions.sessions)
+      } catch (error) {
+        console.error('Failed to refresh sessions:', error)
+      }
+      
+    } catch (error) {
+      console.error('[v0] Failed to create new session:', error)
+      // Show error to user (you could add a toast notification here)
+    } finally {
+      setCreatingSession(false)
     }
   }
 
@@ -483,10 +518,31 @@ export default function IlhamApp() {
           <div className="flex-1 p-8">
             <div className="max-w-4xl mx-auto">
               <div className="mb-6">
-                <h1 className="text-2xl font-semibold text-white mb-2">
-                  {projects.find(p => p.id === selectedProject)?.title}
-                </h1>
-                <p className="text-gray-400">Choose a session to continue or start a new conversation</p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h1 className="text-2xl font-semibold text-white mb-2">
+                      {projects.find(p => p.id === selectedProject)?.title}
+                    </h1>
+                    <p className="text-gray-400">Choose a session to continue or start a new conversation</p>
+                  </div>
+                  <Button 
+                    onClick={handleNewSessionInProject}
+                    disabled={creatingSession}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {creatingSession ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Session
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {loadingSessions ? (
@@ -500,10 +556,20 @@ export default function IlhamApp() {
                   <p className="text-gray-400 mb-6">Start your first conversation in this project</p>
                   <Button 
                     onClick={handleNewSessionInProject}
+                    disabled={creatingSession}
                     className="bg-white text-black hover:bg-gray-200"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Session
+                    {creatingSession ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating Session...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Session
+                      </>
+                    )}
                   </Button>
                 </div>
               ) : (

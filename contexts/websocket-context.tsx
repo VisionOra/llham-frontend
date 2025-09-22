@@ -39,9 +39,45 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [latestEditSuggestion, setLatestEditSuggestion] = useState<ChatMessage | null>(null)
+  const [currentStreamingMessage, setCurrentStreamingMessage] = useState<ChatMessage | null>(null)
   
   const reconnectAttempts = useRef(0)
-  const maxReconnectAttempts = 5
+  const maxReconnectAttempts = 3 // Reduced from 5 to 3
+  const connectionTimeout = useRef<NodeJS.Timeout | null>(null)
+  const lastConnectionAttempt = useRef<number>(0)
+
+  // Function to fetch generated document after workflow completion
+  const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
+    try {
+      console.log('📄 Fetching generated document for session:', sessionId)
+      const response = await fetch(`http://192.168.1.105:8000/documents/${sessionId}/`, {
+        headers: {
+          'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const documentData = await response.json()
+        console.log('📄 Document fetched successfully:', documentData)
+        
+        // Set the document in the context
+        setCurrentDocument({
+          id: documentData.id || sessionId,
+          title: documentData.title || 'Generated Proposal',
+          content: documentData.document || documentData.content,
+          created_at: documentData.created_at || new Date().toISOString(),
+          updated_at: documentData.updated_at || new Date().toISOString(),
+          author: documentData.created_by || 'AI Assistant'
+        })
+      } else {
+        console.error('📄 Failed to fetch document:', response.status)
+      }
+    } catch (error) {
+      console.error('📄 Error fetching generated document:', error)
+    }
+  }, [])
 
   const connect = useCallback(() => {
     const token = TokenManager.getAccessToken()
@@ -50,9 +86,29 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    // Prevent multiple connection attempts
     if (socket?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected')
+      console.log('WebSocket already connected, skipping')
       return
+    }
+
+    if (socket?.readyState === WebSocket.CONNECTING) {
+      console.log('WebSocket already connecting, skipping')
+      return
+    }
+
+    // Prevent rapid connection attempts (debounce)
+    const now = Date.now()
+    if (now - lastConnectionAttempt.current < 2000) {
+      console.log('🔄 Connection attempt too soon, debouncing')
+      return
+    }
+    lastConnectionAttempt.current = now
+
+    // Clear any existing timeout
+    if (connectionTimeout.current) {
+      clearTimeout(connectionTimeout.current)
+      connectionTimeout.current = null
     }
 
     setConnectionStatus('connecting')
@@ -79,7 +135,84 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               console.log('🔗 Connection established')
               break
 
+            case 'ai_message_chunk':
+              console.log('📥 AI message chunk received')
+              
+              const streamingId = `streaming-${data.session_id}`
+              
+              // Always use current_text (full text so far) for consistent display
+              const currentContent = data.current_text || ''
+              
+              setMessages(prev => {
+                // Check if streaming message already exists
+                const existingIndex = prev.findIndex(msg => msg.id === streamingId)
+                
+                if (existingIndex >= 0) {
+                  // Update existing streaming message
+                  const updatedMessages = [...prev]
+                  updatedMessages[existingIndex] = {
+                    ...updatedMessages[existingIndex],
+                    content: currentContent
+                  }
+                  return updatedMessages
+                } else {
+                  // Create new streaming message
+                  const newStreamingMessage: ChatMessage = {
+                    id: streamingId,
+                    type: 'ai',
+                    content: currentContent,
+                    timestamp: new Date(),
+                    sessionId: data.session_id,
+                    projectId: activeProjectId || undefined
+                  }
+                  
+                  setCurrentStreamingMessage(newStreamingMessage)
+                  return [...prev, newStreamingMessage]
+                }
+              })
+              break
+
+            case 'ai_message_complete':
+              console.log('✅ AI message complete')
+              
+              const completionStreamingId = `streaming-${data.session_id}`
+              
+              // Finalize the streaming message
+              setMessages(prev => {
+                const existingIndex = prev.findIndex(msg => msg.id === completionStreamingId)
+                
+                if (existingIndex >= 0) {
+                  // Update the existing streaming message to final version
+                  const updatedMessages = [...prev]
+                  updatedMessages[existingIndex] = {
+                    ...updatedMessages[existingIndex],
+                    content: data.message,
+                    suggestions: data.suggested_questions,
+                    suggestedQuestions: data.suggested_questions
+                  }
+                  return updatedMessages
+                } else {
+                  // Fallback if no streaming message was found
+                  return [...prev, {
+                    id: Date.now().toString(),
+                    type: 'ai',
+                    content: data.message,
+                    timestamp: new Date(),
+                    sessionId: data.session_id,
+                    projectId: data.project_id,
+                    suggestedQuestions: data.suggested_questions,
+                    suggestions: data.suggested_questions
+                  }]
+                }
+              })
+              
+              // Clear streaming state
+              setCurrentStreamingMessage(null)
+              setAgentMode(data.agent_mode || 'conversation')
+              break
+
             case 'ai_message':
+              // Handle non-streaming messages (fallback)
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 type: 'ai',
@@ -116,6 +249,28 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               console.log('📊 Generation progress:', data.stage, data.progress)
               setCurrentStage(data.stage)
               setProgress(data.progress)
+              break
+
+            case 'workflow_completed':
+              console.log('🎉 Workflow completed - fetching generated document')
+              setIsGeneratingProposal(false)
+              setCurrentStage(null)
+              setProgress(100)
+              setAgentMode('editor_mode')
+              
+              // Fetch the generated document from the API
+              if (data.session_id) {
+                fetchGeneratedDocument(data.session_id)
+              }
+
+              setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                type: 'proposal',
+                content: data.message || '🎉 Proposal generation completed successfully! You can now ask me to edit specific sections or make improvements',
+                timestamp: new Date(),
+                sessionId: data.session_id,
+                projectId: data.project_id
+              }])
               break
 
             case 'proposal_completed':
@@ -226,17 +381,24 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         const reasons: { [key: number]: string } = {
           1000: 'Normal closure',
           1001: 'Going away',
+          1006: 'Abnormal closure',
           4001: 'Unauthorized - check your token'
         }
         
         const reason = reasons[event.code] || `Unknown error (${event.code})`
         console.log('Disconnect reason:', reason)
         
+        // Only attempt reconnection for certain error codes and if we have an active session
         if (event.code === 4001) {
+          console.log('🔑 Token expired, clearing tokens')
           TokenManager.clearTokens()
           setConnectionStatus('error')
-        } else if (event.code !== 1000) {
+        } else if (event.code !== 1000 && event.code !== 1001 && activeSessionId) {
+          // Only reconnect for unexpected disconnections and if session is active
+          console.log('🔄 Unexpected disconnection, attempting reconnection')
           handleReconnection()
+        } else {
+          console.log('🔌 Normal closure or no active session, not reconnecting')
         }
       }
 
@@ -253,20 +415,29 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const handleReconnection = useCallback(() => {
+    // Only reconnect if we have an active session
+    if (!activeSessionId) {
+      console.log('🔄 No active session, skipping reconnection')
+      return
+    }
+
     if (reconnectAttempts.current < maxReconnectAttempts) {
       reconnectAttempts.current++
-      const delay = 1000 * reconnectAttempts.current
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000) // Exponential backoff, max 30s
       
       console.log(`🔄 Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts}) in ${delay}ms`)
       
       setTimeout(() => {
-        connect()
+        // Double-check we still have an active session before reconnecting
+        if (activeSessionId) {
+          connect()
+        }
       }, delay)
     } else {
       console.error('❌ Max reconnection attempts reached')
       setConnectionStatus('error')
     }
-  }, [connect])
+  }, [connect, activeSessionId])
 
   const sendMessage = useCallback((message: string, documentContext: string | null = null) => {
     if (socket?.readyState === WebSocket.OPEN && activeSessionId) {
@@ -426,7 +597,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     
     // If we already have a connection for this session, don't reconnect
     if (activeSessionId === sessionId && socket?.readyState === WebSocket.OPEN) {
-      console.log('Session already active with connection')
+      console.log('Session already active with connection, skipping')
       return
     }
 
@@ -434,6 +605,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     if (socket && activeSessionId !== sessionId) {
       console.log('🔌 Closing existing connection for new session')
       socket.close(1000)
+      // Wait a bit before creating new connection
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
 
     setActiveSessionId(sessionId)
@@ -446,6 +619,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setCurrentStage(null)
     setProgress(0)
     setAgentMode('conversation')
+    setCurrentStreamingMessage(null)
+    setLatestEditSuggestion(null)
     
     // Load previous messages if this is an existing session (not a temp session)
     if (!sessionId.startsWith('temp-')) {
@@ -505,6 +680,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setCurrentStage(null)
     setProgress(0)
     setAgentMode('conversation')
+    setCurrentStreamingMessage(null)
+    setLatestEditSuggestion(null)
   }, [socket])
 
   const clearMessages = useCallback(() => {
