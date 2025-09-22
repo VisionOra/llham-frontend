@@ -13,32 +13,57 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Search, Plus, User, Clock, LogOut, MessageSquare, FileText, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { getProjectSessions, getDocumentContent, createSession, type Session, type ProjectWithSessions, type CreateSessionRequest } from "@/lib/api"
+import { getProjectSessions, getDocumentContent, createSession, createProjectWithSession, type Session as ApiSession, type ProjectWithSessions, type CreateSessionRequest, type CreateProjectWithSessionRequest } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
 import { useEffect } from "react"
 
+// Local Session interface that matches what ProjectSidebar expects
+interface LocalSession {
+  id: string
+  project_id: string
+  title: string
+  initial_idea: string
+  agent_mode: string
+  has_document: boolean
+  document?: any
+  created_at: string
+  updated_at: string
+  proposal_title?: string
+  current_stage: string
+  is_proposal_generated: boolean
+  conversation_history: Array<{
+    role: string;
+    message: string;
+    timestamp: string;
+  }>
+  user: string
+}
+
 export default function IlhamApp() {
   const { user, isAuthenticated, logout } = useAuth()
-  const { projects, currentProject, selectProject } = useProjects()
+  const { projects, currentProject, selectProject, createProject } = useProjects()
   const { 
     currentDocument: wsCurrentDocument, 
     messages: wsMessages,
     latestEditSuggestion,
+    connectionStatus,
     startSession, 
     endSession,
     activeSessionId,
     acceptEdit,
-    rejectEdit
+    rejectEdit,
+    sendMessage
   } = useWebSocket()
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [hasDocument, setHasDocument] = useState(false)
   const [currentDocument, setCurrentDocument] = useState<any>(null)
   const [showWelcome, setShowWelcome] = useState(true)
-  const [projectSessions, setProjectSessions] = useState<Session[]>([])
+  const [projectSessions, setProjectSessions] = useState<LocalSession[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [showSessionsList, setShowSessionsList] = useState(false)
   const [loadingDocument, setLoadingDocument] = useState(false)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [creatingSession, setCreatingSession] = useState(false)
 
   const {
@@ -50,20 +75,136 @@ export default function IlhamApp() {
     regenerateSuggestion,
   } = useAIEditing()
 
+  // Send pending message when session is active and connected
+  useEffect(() => {
+    console.log("[v0] useEffect for pending message:", {
+      activeSessionId,
+      pendingMessage: !!pendingMessage,
+      selectedSession,
+      connectionStatus,
+      match: selectedSession === activeSessionId
+    })
+
+    if (activeSessionId && pendingMessage && selectedSession === activeSessionId && connectionStatus === 'connected') {
+      console.log("[v0] Sending pending message:", pendingMessage)
+      sendMessage(pendingMessage)
+      setPendingMessage(null) // Clear after sending
+    }
+  }, [activeSessionId, pendingMessage, selectedSession, sendMessage, connectionStatus])
+
+  // Fallback: Send pending message after a delay if connection doesn't happen quickly
+  useEffect(() => {
+    if (activeSessionId && pendingMessage && selectedSession === activeSessionId) {
+      const timeoutId = setTimeout(() => {
+        if (pendingMessage) { // Check if message is still pending
+          console.log("[v0] Timeout fallback: sending pending message regardless of connection status")
+          sendMessage(pendingMessage)
+          setPendingMessage(null)
+        }
+      }, 3000) // 3 second timeout
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [activeSessionId, pendingMessage, selectedSession, sendMessage])
+
   const handleNewChat = async (message: string) => {
-    // Generate a temporary session ID for new chat
-    const tempSessionId = `temp-${Date.now()}`
-    
-    setSelectedSession(tempSessionId)
-    setShowWelcome(false)
-    setShowSessionsList(false)
-    setHasDocument(false)
-    setCurrentDocument(null)
-    
-    // Start WebSocket session for new chat
-    startSession(tempSessionId, selectedProject)
-    
-    console.log("[v0] New chat started with session:", tempSessionId, "message:", message)
+    try {
+      // Store the message to send after session is created
+      setPendingMessage(message)
+      
+      // Create project and session together using the new endpoint
+      const projectTitle = message.length > 50 ? message.substring(0, 47) + "..." : message
+      
+      console.log("[v0] Creating project with session:", projectTitle)
+      
+      const requestData: CreateProjectWithSessionRequest = {
+        title: projectTitle,
+        initial_idea: message,
+        agent_mode: "conversation"
+      }
+      
+      const response = await createProjectWithSession(requestData)
+      console.log("[v0] Project and session created:", response)
+      
+      // Update the projects context with the new project
+      const newProject = response.project
+      const newSession = response.session
+      
+      setSelectedProject(newProject.id)
+      selectProject(newProject)
+      setSelectedSession(newSession.id)
+      setShowWelcome(false)
+      setShowSessionsList(false)
+      setHasDocument(false)
+      setCurrentDocument(null)
+      
+      // Start WebSocket session with the real session ID
+      // The pending message will be sent automatically via useEffect when session becomes active
+      startSession(newSession.id, newProject.id)
+      
+      console.log("[v0] New chat started with real session:", newSession.id, "project:", newProject.id, "message:", message)
+      
+    } catch (error) {
+      console.error("[v0] Failed to create project with session:", error)
+      
+      // Fallback to old behavior if the new endpoint fails
+      try {
+        const projectTitle = message.length > 50 ? message.substring(0, 47) + "..." : message
+        
+        console.log("[v0] Fallback: Creating project:", projectTitle)
+        await createProject(projectTitle)
+        
+        // Wait for project context to update
+        setTimeout(async () => {
+          const currentProj = currentProject
+          if (currentProj) {
+            setSelectedProject(currentProj.id)
+            
+            try {
+              // Create session in the project
+              const sessionData: CreateSessionRequest = {
+                initial_idea: message,
+                agent_mode: "conversation"
+              }
+              
+              const newSession = await createSession(currentProj.id, sessionData)
+              
+              setSelectedSession(newSession.id)
+              setShowWelcome(false)
+              setShowSessionsList(false)
+              setHasDocument(false)
+              setCurrentDocument(null)
+              
+              startSession(newSession.id, currentProj.id)
+              
+              console.log("[v0] Fallback successful with session:", newSession.id)
+            } catch (sessionError) {
+              console.error("[v0] Fallback session creation failed:", sessionError)
+              
+              // Ultimate fallback to temp session
+              const tempSessionId = `temp-${Date.now()}`
+              setSelectedSession(tempSessionId)
+              setShowWelcome(false)
+              setShowSessionsList(false)
+              setHasDocument(false)
+              setCurrentDocument(null)
+              startSession(tempSessionId, currentProj.id)
+            }
+          }
+        }, 100)
+      } catch (projectError) {
+        console.error("[v0] Complete fallback failed:", projectError)
+        
+        // Ultimate fallback to temp session
+        const tempSessionId = `temp-${Date.now()}`
+        setSelectedSession(tempSessionId)
+        setShowWelcome(false)
+        setShowSessionsList(false)
+        setHasDocument(false)
+        setCurrentDocument(null)
+        startSession(tempSessionId, selectedProject)
+      }
+    }
   }
 
   const handleProjectSelect = async (projectId: string) => {
@@ -81,7 +222,24 @@ export default function IlhamApp() {
       setLoadingSessions(true)
       try {
         const projectWithSessions = await getProjectSessions(projectId)
-        setProjectSessions(projectWithSessions.sessions)
+        // Map API Session to component Session format
+        const mappedSessions: LocalSession[] = projectWithSessions.sessions.map((session) => ({
+          id: session.id,
+          project_id: session.project.id,
+          title: session.proposal_title || session.initial_idea || 'Untitled Session',
+          initial_idea: session.initial_idea,
+          agent_mode: session.agent_mode,
+          has_document: !!session.document || session.is_proposal_generated,
+          document: session.document,
+          created_at: session.created_at,
+          updated_at: session.updated_at,
+          proposal_title: session.proposal_title,
+          current_stage: session.current_stage,
+          is_proposal_generated: session.is_proposal_generated,
+          conversation_history: session.conversation_history,
+          user: session.user
+        }))
+        setProjectSessions(mappedSessions)
       } catch (error) {
         console.error('Failed to load project sessions:', error)
         setProjectSessions([])
@@ -128,11 +286,14 @@ export default function IlhamApp() {
     }
   }
 
-  const handleSessionCardClick = async (session: Session) => {
+  const handleSessionCardClick = async (session: LocalSession) => {
     console.log("[v0] Session card clicked:", session.id)
     console.log("[v0] Session document:", session.document)
     console.log("[v0] Session has document:", !!session.document)
     console.log("[v0] Session is_proposal_generated:", session.is_proposal_generated)
+    
+    // Clear any pending message since we're loading an existing session
+    setPendingMessage(null)
     
     setSelectedSession(session.id)
     setShowSessionsList(false)
@@ -282,7 +443,7 @@ export default function IlhamApp() {
     })
   }
 
-  const getSessionStatusBadge = (session: Session) => {
+  const getSessionStatusBadge = (session: LocalSession) => {
     // Check if session has a document (either with content or just an ID)
     if (session.document && (session.document.content || session.document.id)) {
       return (
@@ -364,6 +525,9 @@ export default function IlhamApp() {
     // End any active WebSocket session
     endSession()
     
+    // Clear any pending message
+    setPendingMessage(null)
+    
     setSelectedProject(null)
     setSelectedSession(null)
     setHasDocument(false)
@@ -374,44 +538,45 @@ export default function IlhamApp() {
   }
 
   const handleNewSessionInProject = async () => {
-    if (!selectedProject) return
-
-    setCreatingSession(true)
-    
-    try {
-      console.log('[v0] Creating new session for project:', selectedProject)
-      
-      // Call API to create new session
-      const sessionData: CreateSessionRequest = {
-        project_id: selectedProject
-      }
-      
-      const newSession = await createSession(sessionData)
-      console.log('[v0] New session created:', newSession)
-      
-      // Navigate to the new session
-      setSelectedSession(newSession.id || newSession.session_id)
-      setHasDocument(false)
-      setCurrentDocument(null)
-      setShowWelcome(false)
-      setShowSessionsList(false)
-      
-      // Start WebSocket session for the new session
-      startSession(newSession.id || newSession.session_id, selectedProject)
-      
-      // Refresh sessions list to include the new session
+    if (selectedProject) {
       try {
-        const projectWithSessions = await getProjectSessions(selectedProject)
-        setProjectSessions(projectWithSessions.sessions)
+        console.log('[v0] Creating new session in project:', selectedProject)
+        
+        // Create a real session in the selected project
+        const sessionData: CreateSessionRequest = {
+          initial_idea: "New conversation",
+          agent_mode: "conversation"
+        }
+        
+        const newSession = await createSession(selectedProject, sessionData)
+        console.log('[v0] New session created:', newSession)
+        
+        setSelectedSession(newSession.id)
+        setHasDocument(false)
+        setCurrentDocument(null)
+        setShowWelcome(false)
+        setShowSessionsList(false)
+        
+        // Start WebSocket session with the real session ID
+        startSession(newSession.id, selectedProject)
+        
+        console.log('[v0] New session started:', newSession.id, 'in project:', selectedProject)
       } catch (error) {
-        console.error('Failed to refresh sessions:', error)
+        console.error('[v0] Failed to create new session:', error)
+        
+        // Fallback to temporary session
+        const tempSessionId = `temp-${Date.now()}`
+        
+        setSelectedSession(tempSessionId)
+        setHasDocument(false)
+        setCurrentDocument(null)
+        setShowWelcome(false)
+        setShowSessionsList(false)
+        
+        startSession(tempSessionId, selectedProject)
+        
+        console.log('[v0] Fallback to temp session:', tempSessionId, 'in project:', selectedProject)
       }
-      
-    } catch (error) {
-      console.error('[v0] Failed to create new session:', error)
-      // Show error to user (you could add a toast notification here)
-    } finally {
-      setCreatingSession(false)
     }
   }
 
@@ -430,7 +595,7 @@ export default function IlhamApp() {
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white">
       {/* Left Sidebar - Exact v0.dev style */}
-      <div className="w-64 bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col">
+      <div className="w-64 bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col ">
         {/* Header */}
         <div className="p-4 border-b border-[#2a2a2a]">
           <div className="flex items-center space-x-2 mb-4">
@@ -469,7 +634,7 @@ export default function IlhamApp() {
         </div>
 
         {/* Projects List */}
-        <div className="flex-1 px-4">
+        <div className="flex-1 h-[60dvh] px-4">
           <ProjectSidebar
             sessions={projectSessions}
             selectedProject={selectedProject}
@@ -497,12 +662,12 @@ export default function IlhamApp() {
           ) : (
             <div className="flex space-x-2">
               <Link href="/login">
-                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white text-xs">
+                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-black text-xs">
                   Login
                 </Button>
               </Link>
               <Link href="/signup">
-                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white text-xs">
+                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-black text-xs">
                   Sign Up
                 </Button>
               </Link>
@@ -631,7 +796,7 @@ export default function IlhamApp() {
               <DocumentViewer 
                 document={documentToDisplay} 
                 onTextSelect={handleTextSelect}
-                editSuggestion={latestEditSuggestion}
+                editSuggestion={latestEditSuggestion || undefined}
                 onAcceptEdit={acceptEdit}
                 onRejectEdit={rejectEdit}
               />

@@ -154,44 +154,47 @@ export function ProjectSidebar({
         )}
         {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
       </div>
+<div>
+  {projects.length === 0 ? (
+    <div className="text-center py-8 text-gray-500">
+      <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+      <p className="text-sm">No projects yet</p>
+      <p className="text-xs text-gray-600 mt-1">Create your first project above</p>
+    </div>
+  ) : (
+    <div className="flex flex-col overflow-y-auto max-h-[400px]">
+      {projects.map((project) => {
+        const projectSessions = getProjectSessions(project.id)
+        const isSelected = selectedProject === project.id
 
-      {projects.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No projects yet</p>
-          <p className="text-xs text-gray-600 mt-1">Create your first project above</p>
-        </div>
-      ) : (
-        projects.map((project) => {
-          const projectSessions = getProjectSessions(project.id)
-          const isSelected = selectedProject === project.id
-
-          return (
-            <div key={project.id} className="mb-2">
-              {/* Project Item - Simple List Format */}
-              <div
-                className={`flex items-center justify-between p-3 rounded-md cursor-pointer transition-colors text-sm ${
-                  isSelected ? "bg-[#2a2a2a] text-white" : "text-gray-400 hover:text-white hover:bg-[#1a1a1a]"
-                }`}
-                onClick={() => onProjectSelect(project.id)}
-              >
-                <div className="flex items-center space-x-3 flex-1 min-w-0">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate font-medium">{project.title}</div>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {projectSessions.some(s => s.has_document || s.document) && (
-                    <FileText className="w-4 h-4 text-green-400" />
-                  )}
-                  <ChevronRight className="w-4 h-4 text-gray-500" />
+        return (
+          <div key={project.id} className="mb-2">
+            {/* Project Item - Simple List Format */}
+            <div
+              className={`flex items-center justify-between p-3 rounded-md cursor-pointer transition-colors text-sm ${
+                isSelected ? "bg-[#2a2a2a] text-white" : "text-gray-400 hover:text-white hover:bg-[#1a1a1a]"
+              }`}
+              onClick={() => onProjectSelect(project.id)}
+            >
+              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate font-medium">{project.title}</div>
                 </div>
               </div>
+              <div className="flex items-center space-x-2">
+                {projectSessions.some(s => s.has_document || s.document) && (
+                  <FileText className="w-4 h-4 text-green-400" />
+                )}
+                <ChevronRight className="w-4 h-4 text-gray-500" />
+              </div>
             </div>
-          )
-        })
-      )}
+          </div>
+        )
+      })}
+    </div>
+  )}
+</div>
     </div>
   )
 }

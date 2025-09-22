@@ -12,6 +12,7 @@ export interface ChatMessage {
   suggestions?: string[]; // Add this for compatibility with existing code
   documentId?: string;
   proposalTitle?: string;
+  isStreaming?: boolean;
   editData?: {
     edit_id: string;
     original: string;
