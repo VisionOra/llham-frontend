@@ -106,7 +106,7 @@ export function ProjectSidebar({
   }
 
   return (
-    <div className="space-y-1">
+  <div className="space-y-1">
       <div className="mb-4">
         {!showCreateForm ? (
           <Button
@@ -162,7 +162,7 @@ export function ProjectSidebar({
       <p className="text-xs text-gray-600 mt-1">Create your first project above</p>
     </div>
   ) : (
-    <div className="flex flex-col overflow-y-auto max-h-[400px]">
+  <div className="flex flex-col overflow-y-auto max-h-[400px] sidebar-scrollbar">
       {projects.map((project) => {
         const projectSessions = getProjectSessions(project.id)
         const isSelected = selectedProject === project.id

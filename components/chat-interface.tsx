@@ -319,14 +319,14 @@ export function ChatInterface({
             <Bot className="w-5 h-5 text-green-400" />
             <h2 className="text-lg font-semibold text-white">{isDocumentMode ? "Document Assistant" : "Ilham AI"}</h2>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 me-2">
                 <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? "bg-green-400" : "bg-red-400"}`} />
                 <span className="text-xs text-gray-400">{connectionStatus === 'connected' ? "Connected" : "Connecting..."}</span>
           </div>
         </div>
 
         {sessionId && (
-          <Badge variant="outline" className="border-green-700 text-green-300">
+          <Badge variant="outline" className="border-green-700 text-green-300 text-center flex items-center justify-center">
             Session Active
           </Badge>
         )}
