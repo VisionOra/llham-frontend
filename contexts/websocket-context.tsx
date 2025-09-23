@@ -34,6 +34,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
   const lastConnectionAttempt = useRef<number>(0)
   const connectionTimeout = useRef<NodeJS.Timeout | null>(null)
+  const fetchedDocumentsRef = useRef<Set<string>>(new Set())
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -59,8 +60,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   // Function to fetch generated document after workflow completion
   const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
+    if (fetchedDocumentsRef.current.has(sessionId)) {
+      console.log('📄 Document already fetched for session:', sessionId)
+      return
+    }
+
     try {
       console.log('📄 Fetching generated document for session:', sessionId)
+      fetchedDocumentsRef.current.add(sessionId)
       const response = await fetch(`${API_BASE_URL}/documents/${sessionId}/`, {
         headers: {
           'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
@@ -84,9 +91,11 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         })
       } else {
         console.error('📄 Failed to fetch document:', response.status)
+        fetchedDocumentsRef.current.delete(sessionId)
       }
     } catch (error) {
       console.error('📄 Error fetching generated document:', error)
+      fetchedDocumentsRef.current.delete(sessionId)
     }
   }, [API_BASE_URL])
 
@@ -517,7 +526,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       console.error('Failed to create WebSocket connection:', error)
       setConnectionStatus('error')
     }
-  }, [activeSessionId, fetchGeneratedDocument, API_BASE_URL])
+  }, [activeSessionId, API_BASE_URL])
 
   const handleReconnection = useCallback(() => {
     // Only reconnect if we have an active session
@@ -689,7 +698,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     
     // Connect WebSocket
     connect()
-  }, [socket, activeSessionId, connect, fetchGeneratedDocument])
+  }, [socket, activeSessionId, connect])
 
   const endSession = useCallback(() => {
     console.log('🔌 Ending session')
@@ -709,6 +718,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setConnectionStatus('disconnected')
     setMessages([])
     setCurrentDocument(null)
+    fetchedDocumentsRef.current.clear()
     setIsGeneratingProposal(false)
     setCurrentStage(null)
     setProgress(0)

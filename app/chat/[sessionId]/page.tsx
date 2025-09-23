@@ -1,7 +1,7 @@
 "use client"
 
 import { useParams, useSearchParams, useRouter } from "next/navigation"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { ChatInterface } from "@/components/chat-interface"
 import { DocumentViewer } from "@/components/document-viewer"
 import { ChatSidebar } from "@/components/chat-sidebar"
@@ -40,6 +40,12 @@ function ChatPageContent() {
   const [hasDocument, setHasDocument] = useState(false)
   const [currentDocument, setCurrentDocument] = useState<any>(null)
   const [loadingDocument, setLoadingDocument] = useState(false)
+  
+  // State for text selection
+  const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
+  
+  // Track loaded sessions to prevent recursive calls
+  const loadedSessionsRef = useRef<Set<string>>(new Set())
 
   // Extract sessionId from params
   const sessionIdParam = params.sessionId
@@ -92,25 +98,30 @@ function ChatPageContent() {
       console.log("[Chat] Starting session:", sessionId, "Project:", projectId)
       startSession(sessionId, projectId)
       
-      // Try to load document for this session
-      loadSessionDocument(sessionId)
+      // Only load document if we haven't loaded it for this session yet
+      if (!loadedSessionsRef.current.has(sessionId)) {
+        loadSessionDocument(sessionId)
+      }
     } else if (!sessionId && activeSessionId) {
       console.log("[Chat] Ending session")
       endSession()
       setHasDocument(false)
       setCurrentDocument(null)
+      // Clear the loaded sessions when ending session
+      loadedSessionsRef.current.clear()
     }
-  }, [sessionId, projectId, activeSessionId, startSession, endSession])
+  }, [sessionId, projectId, activeSessionId])
 
   // Load document for session (using exact logic from old working code)
-  const loadSessionDocument = async (sessionId: string) => {
-    if (loadingDocument) {
-      console.log("[Chat] Already loading document, skipping")
+  const loadSessionDocument = useCallback(async (sessionId: string) => {
+    if (loadingDocument || loadedSessionsRef.current.has(sessionId)) {
+      console.log("[Chat] Already loading document or already loaded, skipping")
       return
     }
 
     try {
       setLoadingDocument(true)
+      loadedSessionsRef.current.add(sessionId)
       console.log("[Chat] Loading document for session:", sessionId)
       
       const documentContent = await getDocumentContent(sessionId)
@@ -187,6 +198,9 @@ function ChatPageContent() {
     } catch (error) {
       console.error("[Chat] Failed to load document:", error)
       
+      // Remove from loaded sessions so it can be retried
+      loadedSessionsRef.current.delete(sessionId)
+      
       // Only show error if the API returned something indicating a document should exist
       // Don't show document viewer for sessions that simply don't have documents
       console.log("[Chat] Document loading failed - showing chat only mode")
@@ -195,7 +209,7 @@ function ChatPageContent() {
     } finally {
       setLoadingDocument(false)
     }
-  }
+  }, [loadingDocument])
 
   // Function to refresh document content from API (exact from old working code)
   const refreshDocumentContent = useCallback(async () => {
@@ -220,7 +234,7 @@ function ChatPageContent() {
     } catch (error) {
       console.error("[Chat] Failed to refresh document:", error)
     }
-  }, [sessionId, hasDocument, currentDocument])
+  }, [sessionId, hasDocument])
 
   // Watch for new AI messages and refresh document if in document mode (exact from old working code)
   useEffect(() => {
@@ -301,7 +315,17 @@ function ChatPageContent() {
   }
 
   const handleTextSelect = (selectedText: string, element: HTMLElement) => {
-    console.log("[Chat] Text selected in document:", selectedText.substring(0, 100) + '...')
+    console.log("[Chat] Text selected in document:", {
+      text: selectedText,
+      length: selectedText.length,
+      preview: selectedText.substring(0, 100) + (selectedText.length > 100 ? '...' : ''),
+      type: typeof selectedText
+    })
+    setSelectedDocumentText(selectedText)
+  }
+
+  const handleClearSelectedText = () => {
+    setSelectedDocumentText("")
   }
 
   const handleDocumentGenerated = (document: any) => {
@@ -371,6 +395,9 @@ function ChatPageContent() {
                   isDocumentMode={true}
                   isWelcomeMode={sessionId === null}
                   onDocumentGenerated={handleDocumentGenerated}
+                  onTextSelect={handleTextSelect}
+                  selectedDocumentText={selectedDocumentText}
+                  onClearSelectedText={handleClearSelectedText}
                 />
               </div>
             </>
@@ -389,6 +416,8 @@ function ChatPageContent() {
                   isDocumentMode={false}
                   isWelcomeMode={sessionId === null}
                   onDocumentGenerated={handleDocumentGenerated}
+                  selectedDocumentText=""
+                  onClearSelectedText={handleClearSelectedText}
                 />
               )}
             </div>

@@ -78,8 +78,9 @@ function MainLayoutContent({ children }: MainLayoutProps) {
       {/* Main Content with Smooth Transitions */}
       <div className="flex-1 relative overflow-hidden ">
         <div 
+          key={pathname}
           className={`absolute inset-0 transition-all duration-300 ease-in-out ${
-            isTransitioning ? 'opacity-0 translate-x-2' : 'opacity-100 translate-x-0'
+            isTransitioning ? 'opacity-100 translate-x-0 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'
           }`}
         >
           {children}

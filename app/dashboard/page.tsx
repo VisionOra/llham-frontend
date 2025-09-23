@@ -70,12 +70,16 @@ function DashboardContent() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center min-h-screen">
-      <div className="max-w-2xl text-center space-y-6">
-        <h1 className="text-4xl font-semibold text-white">What do you want to create?</h1>
-        <p className="text-lg text-gray-400">Start building with a single prompt. No coding needed.</p>
-        
-        <div className="w-full max-w-xl">
+    <div className="flex-1 flex items-center justify-center min-h-screen bg-gradient-to-br from-[#18181b] via-[#23232a] to-[#18181b]">
+      <div className="max-w-2xl w-full mx-auto text-center space-y-8 p-8 rounded-2xl shadow-2xl bg-[#18181b]/90 border border-[#23232a] backdrop-blur-md">
+        <h1 className="text-4xl font-extrabold text-white drop-shadow-lg">What do you want to create?</h1>
+        <p className="text-lg text-gray-400 mb-2">Start building with a single prompt. No coding needed.</p>
+        <div className="flex items-center justify-center mb-6">
+          <span className="inline-block px-4 py-1.5 rounded-full bg-gradient-to-r from-green-600 via-blue-700 to-green-700 text-white text-xs font-semibold shadow-lg border border-green-700/60 drop-shadow-[0_0_8px_rgba(34,197,94,0.4)] animate-pulse">
+            <span className="mr-1">✨</span>AI-powered project creation
+          </span>
+        </div>
+        <div className="w-full max-w-xl mx-auto">
           <ChatInterface
             sessionId={null}
             projectId={null}

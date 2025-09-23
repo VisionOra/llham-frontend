@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, MessageSquare, FileText, Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Plus, MessageSquare, FileText, Loader2, Trash2 } from "lucide-react"
 import { getProjectSessions, deleteSession, createSession, type CreateSessionRequest } from "@/lib/api"
 
 // Local Session interface that matches what ProjectSidebar expects
@@ -43,6 +44,9 @@ function ProjectSessionsContent() {
   const [pagination, setPagination] = useState<any>(null)
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [creatingSession, setCreatingSession] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null)
+  const [isDeletingSession, setIsDeletingSession] = useState(false)
 
   // Find the current project
   const currentProject = projects.find(p => p.id === projectId)
@@ -133,6 +137,31 @@ function ProjectSessionsContent() {
 
   const handleProjectSelect = (projectId: string) => {
     router.push(`/project/${projectId}`)
+  }
+
+  const handleDeleteSession = async (sessionId: string, sessionTitle: string) => {
+    setSessionToDelete(sessionId)
+    setShowDeleteDialog(true)
+  }
+
+  const confirmDeleteSession = async () => {
+    if (!sessionToDelete) return
+
+    setIsDeletingSession(true)
+    try {
+      await deleteSession(sessionToDelete)
+
+      // Remove session from local state
+      setProjectSessions(prev => prev.filter(s => s.id !== sessionToDelete))
+      
+      setShowDeleteDialog(false)
+      setSessionToDelete(null)
+    } catch (error) {
+      console.error("Failed to delete session:", error)
+      alert("Failed to delete session. Please try again.")
+    } finally {
+      setIsDeletingSession(false)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -256,21 +285,41 @@ function ProjectSessionsContent() {
               {projectSessions.map((session) => (
                 <Card 
                   key={session.id} 
-                  className="bg-[#1a1a1a] border-[#2a2a2a] hover:bg-[#2a2a2a] cursor-pointer transition-colors"
-                  onClick={() => handleSessionSelect(session.id)}
+                  className="bg-[#1a1a1a] border-[#2a2a2a] hover:bg-[#2a2a2a] transition-colors group"
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-white text-base truncate">
+                      <CardTitle 
+                        className="text-white text-base truncate cursor-pointer flex-1"
+                        onClick={() => handleSessionSelect(session.id)}
+                      >
                         {session.proposal_title || session.initial_idea || 'Untitled Session'}
                       </CardTitle>
-                      {getSessionStatusBadge(session)}
+                      <div className="flex items-center space-x-2">
+                        {getSessionStatusBadge(session)}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteSession(session.id, session.proposal_title || session.initial_idea || 'Untitled Session')
+                          }}
+                          className="p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Delete session"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <CardDescription className="text-gray-400 text-sm">
+                    <CardDescription 
+                      className="text-gray-400 text-sm cursor-pointer"
+                      onClick={() => handleSessionSelect(session.id)}
+                    >
                       {formatDate(session.updated_at)}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="pt-0">
+                  <CardContent 
+                    className="pt-0 cursor-pointer"
+                    onClick={() => handleSessionSelect(session.id)}
+                  >
                     <p className="text-gray-300 text-sm line-clamp-2">
                       {session.initial_idea}
                     </p>
@@ -325,6 +374,40 @@ function ProjectSessionsContent() {
             </div>
         )}
       </div>
+
+      {/* Delete Session Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white">
+          <DialogHeader>
+            <DialogTitle>Delete Session</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-300">
+              Are you sure you want to delete this session? This action cannot be undone and all conversation history will be lost.
+            </p>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteDialog(false)
+                  setSessionToDelete(null)
+                }}
+                className="border-[#2a2a2a] text-black hover:bg-[#2a2a2a] hover:text-white"
+                disabled={isDeletingSession}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmDeleteSession}
+                disabled={isDeletingSession}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isDeletingSession ? "Deleting..." : "Delete Session"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -4,9 +4,9 @@ import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, User, LogOut, Search, Clock, Plus } from "lucide-react"
+import { ArrowLeft, User, LogOut, Search, Clock, Plus, Trash2 } from "lucide-react"
 import { useProjects } from "@/contexts/project-context"
-import { getUserProjectsPaginated } from "@/lib/api"
+import { getUserProjectsPaginated, deleteProject, getProjectSessions } from "@/lib/api"
 
 interface ChatSidebarProps {
   user?: {
@@ -40,6 +40,13 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const [newProjectName, setNewProjectName] = useState("")
   const [isCreatingProject, setIsCreatingProject] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
+  const [isDeletingProject, setIsDeletingProject] = useState(false)
+  const [deleteWarningInfo, setDeleteWarningInfo] = useState<{
+    sessionsCount: number
+    documentsCount: number
+  }>({ sessionsCount: 0, documentsCount: 0 })
 
   const handleNewProjectClick = () => {
     setNewProjectName("")
@@ -66,6 +73,56 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleCreateProject()
+    }
+  }
+
+  const handleDeleteProject = async (projectId: string, projectTitle: string) => {
+    try {
+      // Check if project has sessions and documents
+      const sessionsResponse = await getProjectSessions(projectId, 1)
+      const sessions = sessionsResponse.results || []
+      const sessionsCount = sessions.length
+      
+      // Count sessions with documents
+      const documentsCount = sessions.filter(session => 
+        session.document && (session.document.content || session.document.id) || 
+        session.is_proposal_generated
+      ).length
+      
+      setDeleteWarningInfo({ sessionsCount, documentsCount })
+      setProjectToDelete(projectId)
+      setShowDeleteDialog(true)
+    } catch (error) {
+      console.error("Failed to check project sessions:", error)
+      // If we can't check sessions, still allow deletion but with generic warning
+      setDeleteWarningInfo({ sessionsCount: 0, documentsCount: 0 })
+      setProjectToDelete(projectId)
+      setShowDeleteDialog(true)
+    }
+  }
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return
+
+    setIsDeletingProject(true)
+    try {
+      await deleteProject(projectToDelete)
+
+      // Remove project from local state
+      setProjects(prev => prev.filter(p => p.id !== projectToDelete))
+      
+      // Refresh projects from context
+      await refreshProjects()
+      
+      setShowDeleteDialog(false)
+      setProjectToDelete(null)
+      setDeleteWarningInfo({ sessionsCount: 0, documentsCount: 0 })
+    } catch (error) {
+      console.error("Failed to delete project:", error)
+      // You might want to show an error message here
+      alert("Failed to delete project. Please try again.")
+    } finally {
+      setIsDeletingProject(false)
     }
   }
 
@@ -109,6 +166,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
           <div className="p-4 space-y-2 border-b border-[#2a2a2a]">
             <div 
               className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
+              onClick={onBackToDashboard}
             >
               <Plus className="w-4 h-4" />
               <span className="text-sm">New Chat</span>
@@ -129,19 +187,33 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               {projects.map((project) => (
                 <div
                   key={project.id}
-                  onClick={() => onProjectSelect?.(project.id)}
                   className="flex items-center space-x-3 p-3 hover:bg-[#1a1a1a] cursor-pointer rounded-lg mb-1 group"
                 >
                   <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                  <div className="flex-1 min-w-0">
+                  <div 
+                    className="flex-1 min-w-0"
+                    onClick={() => onProjectSelect?.(project.id)}
+                  >
                     <p className="text-sm text-white truncate group-hover:text-blue-400 transition-colors">
                       {project.title}
                     </p>
                   </div>
-                  <div className="text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteProject(project.id, project.title)
+                      }}
+                      className="p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-colors"
+                      title="Delete project"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <div className="text-gray-500">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -206,38 +278,60 @@ export const ChatSidebar = React.memo(function ChatSidebar({
         </Button>
       </div>
 
-      {/* New Project Dialog */}
-      <Dialog open={showNewProjectDialog} onOpenChange={setShowNewProjectDialog}>
+      {/* Delete Project Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white">
           <DialogHeader>
-            <DialogTitle>Create New Project</DialogTitle>
+            <DialogTitle>Delete Project</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <label className="text-sm text-gray-400 mb-2 block">Project Name</label>
-              <Input
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter project name..."
-                className="bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder:text-gray-500"
-                autoFocus
-              />
+            <div className="text-gray-300">
+              <p className="mb-3">Are you sure you want to delete this project? This action cannot be undone.</p>
+              
+              {deleteWarningInfo.sessionsCount > 0 && (
+                <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-3 mb-3">
+                  <div className="flex items-start space-x-2">
+                    <div className="w-5 h-5 text-yellow-500 mt-0.5">
+                      ⚠️
+                    </div>
+                    <div className="text-sm">
+                      <p className="font-medium text-yellow-300 mb-1">Warning: This project contains data</p>
+                      <ul className="space-y-1 text-yellow-100">
+                        <li>• <strong>{deleteWarningInfo.sessionsCount}</strong> session{deleteWarningInfo.sessionsCount !== 1 ? 's' : ''} will be deleted</li>
+                        {deleteWarningInfo.documentsCount > 0 && (
+                          <li>• <strong>{deleteWarningInfo.documentsCount}</strong> document{deleteWarningInfo.documentsCount !== 1 ? 's' : ''} will be permanently lost</li>
+                        )}
+                        <li>• All conversation history will be lost</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <p className="text-red-300 font-medium">
+                Are you still sure you want to proceed?
+              </p>
             </div>
+            
             <div className="flex justify-end space-x-2">
               <Button
                 variant="outline"
-                onClick={() => setShowNewProjectDialog(false)}
+                onClick={() => {
+                  setShowDeleteDialog(false)
+                  setProjectToDelete(null)
+                  setDeleteWarningInfo({ sessionsCount: 0, documentsCount: 0 })
+                }}
                 className="border-[#2a2a2a] text-black hover:bg-[#2a2a2a] hover:text-white"
+                disabled={isDeletingProject}
               >
                 Cancel
               </Button>
               <Button
-                onClick={handleCreateProject}
-                disabled={!newProjectName.trim() || isCreatingProject}
-                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={confirmDeleteProject}
+                disabled={isDeletingProject}
+                className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {isCreatingProject ? "Creating..." : "Create Project"}
+                {isDeletingProject ? "Deleting..." : "Yes, Delete Project"}
               </Button>
             </div>
           </div>
