@@ -46,16 +46,67 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   const [copied, setCopied] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
 
+  // Debug: Log document content type and value
+  useEffect(() => {
+    console.log('[DocumentViewer] Document content debug:', {
+      hasDocument: !!document,
+      contentType: typeof document?.content,
+      contentValue: document?.content,
+      isString: typeof document?.content === 'string',
+      isObject: typeof document?.content === 'object',
+      contentKeys: typeof document?.content === 'object' && document?.content !== null 
+        ? Object.keys(document.content) 
+        : null
+    })
+  }, [document])
+
   // Process document content to make text selection more precise
-  const processedContent = document?.content ? 
-    document.content
-      // Add word boundaries to make selection more precise
-      .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
-      .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
-      .replace(/(<li[^>]*>)(.*?)(<\/li>)/g, '$1<span class="selectable-text">$2</span>$3')
-      .replace(/(<td[^>]*>)(.*?)(<\/td>)/g, '$1<span class="selectable-text">$2</span>$3')
-      .replace(/(<th[^>]*>)(.*?)(<\/th>)/g, '$1<span class="selectable-text">$2</span>$3')
-    : ''
+  const processedContent = (() => {
+    if (!document?.content) return ''
+    
+    // If content is already a string, use it directly
+    if (typeof document.content === 'string') {
+      return document.content
+        // Add word boundaries to make selection more precise
+        .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
+        .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
+        .replace(/(<li[^>]*>)(.*?)(<\/li>)/g, '$1<span class="selectable-text">$2</span>$3')
+        .replace(/(<td[^>]*>)(.*?)(<\/td>)/g, '$1<span class="selectable-text">$2</span>$3')
+        .replace(/(<th[^>]*>)(.*?)(<\/th>)/g, '$1<span class="selectable-text">$2</span>$3')
+    }
+    
+    // If content is an object, try to extract HTML content from common fields
+    if (typeof document.content === 'object' && document.content !== null) {
+      const contentObj = document.content as any
+      
+      // Try common content field names
+      const possibleContent = contentObj.document || 
+                             contentObj.content || 
+                             contentObj.html_content || 
+                             contentObj.body || 
+                             contentObj.text || 
+                             contentObj.proposal_content
+      
+      if (typeof possibleContent === 'string') {
+        return possibleContent
+          .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
+          .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
+          .replace(/(<li[^>]*>)(.*?)(<\/li>)/g, '$1<span class="selectable-text">$2</span>$3')
+          .replace(/(<td[^>]*>)(.*?)(<\/td>)/g, '$1<span class="selectable-text">$2</span>$3')
+          .replace(/(<th[^>]*>)(.*?)(<\/th>)/g, '$1<span class="selectable-text">$2</span>$3')
+      }
+      
+      // If it's still an object, try JSON.stringify as fallback
+      try {
+        return `<pre>${JSON.stringify(contentObj, null, 2)}</pre>`
+      } catch (e) {
+        return '<p>Unable to display document content</p>'
+      }
+    }
+    
+    // Fallback: convert whatever it is to string
+    return String(document.content)
+  })()
 
   useEffect(() => {
     console.log("[v0] DocumentViewer received document:", document)
@@ -255,7 +306,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a] w-[50dvw]">
+    <div className="flex flex-col h-full bg-[#0a0a0a] w-full">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-[#2a2a2a]">
         <div className="flex items-center space-x-3">

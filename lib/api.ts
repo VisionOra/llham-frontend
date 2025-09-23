@@ -249,11 +249,20 @@ export async function login(credentials: LoginRequest): Promise<AuthResponse> {
   }
 }
 
-export async function register(userData: RegisterRequest): Promise<AuthResponse> {
+
+export interface RegisterApiResponse {
+  data: AuthResponse;
+  status: number;
+}
+
+export async function register(userData: RegisterRequest): Promise<RegisterApiResponse> {
   try {
     const response = await authApi.post<AuthResponse>('/api/auth/register/', userData);
-    return response.data;
-  } catch (error) {
+    return { data: response.data, status: response.status };
+  } catch (error: any) {
+    if (error.response) {
+      return { data: error.response.data, status: error.response.status };
+    }
     throw error;
   }
 }
@@ -420,7 +429,7 @@ export async function createProjectWithSession(data: CreateProjectWithSessionReq
 export async function getDocumentContent(sessionId: string): Promise<any> {
   try {
     console.log('[API] Fetching document content for session:', sessionId);
-    const response = await projectApi.get(`/api/proposals/sessions/${sessionId}/document/`);
+    const response = await projectApi.get(`/api/proposals/sessions/${sessionId}`);
     console.log('[API] Document content response:', response.data);
     return response.data;
   } catch (error) {
@@ -430,7 +439,7 @@ export async function getDocumentContent(sessionId: string): Promise<any> {
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       console.log('[API] Redirect detected, trying direct backend call for document...');
       try {
-        const directResponse = await axios.get(`${API_BASE_URL}/api/proposals/sessions/${sessionId}/document/`, {
+        const directResponse = await axios.get(`${API_BASE_URL}/api/proposals/sessions/${sessionId}`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',

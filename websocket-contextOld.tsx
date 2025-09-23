@@ -17,9 +17,7 @@ interface WebSocketContextType {
   activeSessionId: string | null
   latestEditSuggestion: ChatMessage | null
   isTyping: boolean
-  pendingMessage: string | null
   sendMessage: (message: string, documentContext?: string | null) => void
-  setPendingMessage: (message: string | null) => void
   acceptEdit: (editId: string) => void
   rejectEdit: (editId: string) => void
   requestEdit: (selectedText: string, documentContext: string) => void
@@ -47,7 +45,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [latestEditSuggestion, setLatestEditSuggestion] = useState<ChatMessage | null>(null)
   const [isTyping, setIsTyping] = useState(false)
   const [currentStreamingMessage, setCurrentStreamingMessage] = useState<ChatMessage | null>(null)
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   
   const reconnectAttempts = useRef(0)
   const maxReconnectAttempts = 5
@@ -60,7 +57,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
     try {
       console.log('📄 Fetching generated document for session:', sessionId)
-      const response = await fetch(`${API_BASE_URL}/documents/${sessionId}/`, {
+  const response = await fetch(`${API_BASE_URL}/documents/${sessionId}/`, {
         headers: {
           'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
           'Content-Type': 'application/json',
@@ -87,7 +84,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('📄 Error fetching generated document:', error)
     }
-  }, [API_BASE_URL])
+  }, [])
 
   const connect = useCallback(() => {
     const token = TokenManager.getAccessToken()
@@ -122,8 +119,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
 
     setConnectionStatus('connecting')
-    const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || API_BASE_URL.replace(/^http/, "ws");
-    const wsUrl = `${WS_BASE_URL}/ws/chat/?token=${token}`
+  const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || API_BASE_URL.replace(/^http/, "ws");
+  const wsUrl = `${WS_BASE_URL}/ws/chat/?token=${token}`
     console.log('[WebSocket] Connecting to:', wsUrl)
 
     try {
@@ -159,24 +156,25 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 
                 if (existingIndex >= 0) {
                   // Update existing streaming message
-                  const updated = [...prev]
-                  updated[existingIndex] = {
-                    ...updated[existingIndex],
-                    content: currentContent,
-                    isStreaming: true
+                  const updatedMessages = [...prev]
+                  updatedMessages[existingIndex] = {
+                    ...updatedMessages[existingIndex],
+                    content: currentContent
                   }
-                  return updated
+                  return updatedMessages
                 } else {
                   // Create new streaming message
-                  return [...prev, {
+                  const newStreamingMessage: ChatMessage = {
                     id: streamingId,
-                    type: 'ai' as const,
+                    type: 'ai',
                     content: currentContent,
                     timestamp: new Date(),
                     sessionId: data.session_id,
-                    projectId: data.project_id,
-                    isStreaming: true
-                  }]
+                    projectId: activeProjectId || undefined
+                  }
+                  
+                  setCurrentStreamingMessage(newStreamingMessage)
+                  return [...prev, newStreamingMessage]
                 }
               })
               break
@@ -191,27 +189,26 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 const existingIndex = prev.findIndex(msg => msg.id === completionStreamingId)
                 
                 if (existingIndex >= 0) {
-                  const updated = [...prev]
-                  updated[existingIndex] = {
-                    ...updated[existingIndex],
-                    content: data.final_text || updated[existingIndex].content,
-                    isStreaming: false,
+                  // Update the existing streaming message to final version
+                  const updatedMessages = [...prev]
+                  updatedMessages[existingIndex] = {
+                    ...updatedMessages[existingIndex],
+                    content: data.message,
                     suggestions: data.suggested_questions,
                     suggestedQuestions: data.suggested_questions
                   }
-                  return updated
+                  return updatedMessages
                 } else {
-                  // Fallback: create new message if streaming message wasn't found
+                  // Fallback if no streaming message was found
                   return [...prev, {
                     id: Date.now().toString(),
-                    type: 'ai' as const,
-                    content: data.final_text || '',
+                    type: 'ai',
+                    content: data.message,
                     timestamp: new Date(),
                     sessionId: data.session_id,
                     projectId: data.project_id,
-                    suggestions: data.suggested_questions,
                     suggestedQuestions: data.suggested_questions,
-                    isStreaming: false
+                    suggestions: data.suggested_questions
                   }]
                 }
               })
@@ -243,6 +240,29 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               setIsTyping(true)
               currentMessageRef.current = ''
               currentMessageIdRef.current = Date.now().toString()
+              // Do not add empty message here
+              break
+
+            case 'ai_message_chunk':
+              // Chunk of streaming message
+              if (currentMessageIdRef.current) {
+                currentMessageRef.current += data.chunk
+                
+                setMessages(prev => prev.map(msg => 
+                  msg.id === currentMessageIdRef.current
+                    ? { ...msg, content: currentMessageRef.current, isStreaming: true }
+                    : msg
+                ))
+                
+                // Reset typing timeout
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current)
+                }
+                
+                typingTimeoutRef.current = setTimeout(() => {
+                  setIsTyping(false)
+                }, 1000)
+              }
               break
 
             case 'ai_message_end':
@@ -395,7 +415,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                   updated_at: data.updated_at || new Date().toISOString(),
                   author: data.author || 'AI Assistant'
                 })
+                console.log('📄 Document updated with new content')
               } else if (data.session_id) {
+                // Fetch the updated document if document content not provided
                 fetchGeneratedDocument(data.session_id)
               }
               
@@ -505,7 +527,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       console.error('Failed to create WebSocket connection:', error)
       setConnectionStatus('error')
     }
-  }, [activeSessionId, fetchGeneratedDocument, API_BASE_URL])
+  }, [])
 
   const handleReconnection = useCallback(() => {
     // Only reconnect if we have an active session
@@ -574,10 +596,93 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       console.log('✅ Accepting edit:', payload)
       socket.send(JSON.stringify(payload))
       
+      // Apply the edit to the current document
+      if (latestEditSuggestion?.editData && currentDocument) {
+        const { original, proposed } = latestEditSuggestion.editData
+        
+        console.log('📝 Applying edit:', {
+          originalLength: original.length,
+          proposedLength: proposed.length,
+          originalPreview: original.substring(0, 200) + '...',
+          proposedPreview: proposed.substring(0, 200) + '...',
+          documentContentPreview: currentDocument.content.substring(0, 500) + '...'
+        })
+        
+        // Try to find and replace the original content
+        let updatedContent = currentDocument.content
+        let replacementSuccessful = false
+        
+        try {
+          // First try exact match
+          if (updatedContent.includes(original)) {
+            updatedContent = updatedContent.replace(original, proposed)
+            replacementSuccessful = true
+            console.log('📝 Exact match replacement successful')
+          } else {
+            // The document might have been processed with selectable-text spans
+            // Try removing those spans and then matching
+            const cleanDocumentContent = updatedContent.replace(/<span class="selectable-text">(.*?)<\/span>/g, '$1')
+            
+            if (cleanDocumentContent.includes(original)) {
+              // Replace in the clean content, then add spans back
+              const replacedContent = cleanDocumentContent.replace(original, proposed)
+              // Re-process with selectable spans
+              updatedContent = replacedContent
+                .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
+                .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
+                .replace(/(<li[^>]*>)(.*?)(<\/li>)/g, '$1<span class="selectable-text">$2</span>$3')
+                .replace(/(<td[^>]*>)(.*?)(<\/td>)/g, '$1<span class="selectable-text">$2</span>$3')
+                .replace(/(<th[^>]*>)(.*?)(<\/th>)/g, '$1<span class="selectable-text">$2</span>$3')
+              
+              replacementSuccessful = true
+              console.log('📝 Replacement successful after cleaning selectable spans')
+            } else {
+              // Try to find similar content by converting both to plain text
+              const originalText = original.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+              
+              // Try to find the text content in the HTML
+              const regex = new RegExp(originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+              const matches = cleanDocumentContent.match(regex)
+              
+              if (matches && matches.length > 0) {
+                // Replace the first match
+                updatedContent = cleanDocumentContent.replace(matches[0], proposed)
+                // Re-process with selectable spans
+                updatedContent = updatedContent
+                  .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
+                  .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
+                  .replace(/(<li[^>]*>)(.*?)(<\/li>)/g, '$1<span class="selectable-text">$2</span>$3')
+                  .replace(/(<td[^>]*>)(.*?)(<\/td>)/g, '$1<span class="selectable-text">$2</span>$3')
+                  .replace(/(<th[^>]*>)(.*?)(<\/th>)/g, '$1<span class="selectable-text">$2</span>$3')
+                
+                replacementSuccessful = true
+                console.log('📝 Text-based replacement successful')
+              } else {
+                console.warn('📝 Could not find original content in document for replacement')
+                console.warn('📝 Original text:', originalText)
+                console.warn('📝 Clean document preview:', cleanDocumentContent.substring(0, 300))
+              }
+            }
+          }
+          
+          if (replacementSuccessful) {
+            setCurrentDocument({
+              ...currentDocument,
+              content: updatedContent,
+              updated_at: new Date().toISOString()
+            })
+            
+            console.log('📝 Document updated with accepted edit')
+          }
+        } catch (error) {
+          console.error('📝 Error applying edit to document:', error)
+        }
+      }
+      
       // Clear the edit suggestion from overlay
       setLatestEditSuggestion(null)
     }
-  }, [socket, activeSessionId])
+  }, [socket, activeSessionId, latestEditSuggestion, currentDocument])
 
   const rejectEdit = useCallback((editId: string) => {
     if (socket?.readyState === WebSocket.OPEN && activeSessionId) {
@@ -659,11 +764,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           setAgentMode(sessionData.agent_mode)
         }
         
-        // Check if proposal was generated and fetch document
+        // Check if proposal was generated
         if (sessionData.is_proposal_generated) {
           setAgentMode('editor_mode')
-          // Fetch the document for this session
-          fetchGeneratedDocument(sessionId)
         }
         
       } catch (error) {
@@ -674,7 +777,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     
     // Connect WebSocket
     connect()
-  }, [socket, activeSessionId, connect, fetchGeneratedDocument])
+  }, [socket, activeSessionId, connect])
 
   const endSession = useCallback(() => {
     console.log('🔌 Ending session')
@@ -710,15 +813,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setMessages([])
   }, [])
 
-  // Auto-send pending message when session is active and connected
-  useEffect(() => {
-    if (activeSessionId && pendingMessage && connectionStatus === 'connected' && socket?.readyState === WebSocket.OPEN) {
-      console.log('[WebSocket] Auto-sending pending message:', pendingMessage)
-      sendMessage(pendingMessage)
-      setPendingMessage(null) // Clear after sending
-    }
-  }, [activeSessionId, pendingMessage, connectionStatus, socket, sendMessage])
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -743,9 +837,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     activeSessionId,
     latestEditSuggestion,
     isTyping,
-    pendingMessage,
     sendMessage,
-    setPendingMessage,
     acceptEdit,
     rejectEdit,
     requestEdit,
