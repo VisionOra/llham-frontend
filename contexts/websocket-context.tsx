@@ -54,6 +54,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const currentMessageRef = useRef<string>('')
   const currentMessageIdRef = useRef<string | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const messageCounter = useRef(0)
  
 
   // Function to fetch generated document after workflow completion
@@ -148,7 +149,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             case 'ai_message_chunk':
               console.log('📥 AI message chunk received')
               
-              const streamingId = `streaming-${data.session_id}`
+              // Create unique streaming ID for each new message
+              if (!currentMessageIdRef.current) {
+                messageCounter.current += 1
+                currentMessageIdRef.current = `streaming-${data.session_id}-${messageCounter.current}`
+              }
+              
+              const streamingId = currentMessageIdRef.current
               
               // Always use current_text (full text so far) for consistent display
               const currentContent = data.current_text || ''
@@ -184,37 +191,42 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             case 'ai_message_complete':
               console.log('✅ AI message complete')
               
-              const completionStreamingId = `streaming-${data.session_id}`
+              const completionStreamingId = currentMessageIdRef.current
               
-              // Finalize the streaming message
-              setMessages(prev => {
-                const existingIndex = prev.findIndex(msg => msg.id === completionStreamingId)
-                
-                if (existingIndex >= 0) {
-                  const updated = [...prev]
-                  updated[existingIndex] = {
-                    ...updated[existingIndex],
-                    content: data.final_text || updated[existingIndex].content,
-                    isStreaming: false,
-                    suggestions: data.suggested_questions,
-                    suggestedQuestions: data.suggested_questions
+              if (completionStreamingId) {
+                // Finalize the streaming message
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(msg => msg.id === completionStreamingId)
+                  
+                  if (existingIndex >= 0) {
+                    const updated = [...prev]
+                    updated[existingIndex] = {
+                      ...updated[existingIndex],
+                      content: data.final_text || updated[existingIndex].content,
+                      isStreaming: false,
+                      suggestions: data.suggested_questions,
+                      suggestedQuestions: data.suggested_questions
+                    }
+                    return updated
+                  } else {
+                    // Fallback: create new message if streaming message wasn't found
+                    return [...prev, {
+                      id: Date.now().toString(),
+                      type: 'ai' as const,
+                      content: data.final_text || '',
+                      timestamp: new Date(),
+                      sessionId: data.session_id,
+                      projectId: data.project_id,
+                      suggestions: data.suggested_questions,
+                      suggestedQuestions: data.suggested_questions,
+                      isStreaming: false
+                    }]
                   }
-                  return updated
-                } else {
-                  // Fallback: create new message if streaming message wasn't found
-                  return [...prev, {
-                    id: Date.now().toString(),
-                    type: 'ai' as const,
-                    content: data.final_text || '',
-                    timestamp: new Date(),
-                    sessionId: data.session_id,
-                    projectId: data.project_id,
-                    suggestions: data.suggested_questions,
-                    suggestedQuestions: data.suggested_questions,
-                    isStreaming: false
-                  }]
-                }
-              })
+                })
+                
+                // Reset streaming state for next message
+                currentMessageIdRef.current = null
+              }
               
               // Clear streaming state
               setCurrentStreamingMessage(null)
@@ -543,6 +555,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       }
       
       console.log('📤 Sending message:', payload)
+      console.log('📤 Active Project ID:', activeProjectId)
       socket.send(JSON.stringify(payload))
       
       // Add user message to chat - show the original input for display
@@ -605,6 +618,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   const startSession = useCallback(async (sessionId: string, projectId: string | null = null) => {
     console.log('🔌 Starting session:', sessionId, 'Project:', projectId)
+    console.log('🔌 ProjectId type:', typeof projectId, 'Value:', projectId)
     
     // If we already have a connection for this session, don't reconnect
     if (activeSessionId === sessionId && socket?.readyState === WebSocket.OPEN) {
@@ -622,6 +636,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
     setActiveSessionId(sessionId)
     setActiveProjectId(projectId)
+    console.log('🔌 Set activeProjectId to:', projectId)
     
     // Clear state for new session
     setMessages([])
@@ -701,6 +716,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setIsTyping(false)
     currentMessageRef.current = ''
     currentMessageIdRef.current = null
+    messageCounter.current = 0
 
     setCurrentStreamingMessage(null)
     setLatestEditSuggestion(null)
@@ -708,6 +724,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   const clearMessages = useCallback(() => {
     setMessages([])
+    messageCounter.current = 0
+    currentMessageIdRef.current = null
   }, [])
 
   // Auto-send pending message when session is active and connected

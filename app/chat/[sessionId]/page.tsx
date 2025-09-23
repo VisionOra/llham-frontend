@@ -28,7 +28,13 @@ function ChatPageContent() {
     connectionStatus 
   } = useWebSocket()
 
+  // Chat panel resize state
+  const [chatWidth, setChatWidth] = useState(350) // Chat width in pixels
+  const [isResizing, setIsResizing] = useState(false)
   
+  // Calculate document width: total width - sidebar (250px) - chat width
+  const sidebarWidth = 256 // Fixed sidebar width
+  const documentWidth = `calc(100vw - ${sidebarWidth}px - ${chatWidth}px)`
 
   // Local state for document management (like in old code)
   const [hasDocument, setHasDocument] = useState(false)
@@ -42,6 +48,43 @@ function ChatPageContent() {
   
   // Extract projectId from search params
   const projectId = searchParams.get('project')
+
+  // Handle chat panel resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return
+      
+      e.preventDefault()
+      const viewportWidth = window.innerWidth
+      const mouseX = e.clientX
+      
+      // Calculate new chat width (min 250px, max 50% of viewport)
+      const newWidth = Math.min(viewportWidth * 0.5, Math.max(250, viewportWidth - mouseX))
+      setChatWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      document.body.style.cursor = 'default'
+      document.body.style.userSelect = 'auto'
+    }
+
+    if (isResizing) {
+      document.body.style.cursor = 'ew-resize'
+      document.body.style.userSelect = 'none'
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
+
+  const handleResizeStart = () => {
+    setIsResizing(true)
+  }
 
   // Start session when sessionId changes (like in old code)
   useEffect(() => {
@@ -282,13 +325,16 @@ function ChatPageContent() {
       {/* Main Content Area */}
       <div className="flex-1 flex h-full min-h-0">
         {(() => {
-          console.log('[Chat] Layout render check:', { hasDocument, documentToDisplay: !!documentToDisplay })
-          return hasDocument && documentToDisplay ? (
+          console.log('[Chat] Layout render check:', { hasDocument, currentDocument: !!currentDocument })
+          return hasDocument && currentDocument ? (
             <>
-              {/* Document Viewer - Center */}
-              <div className="flex-1 min-h-0">
+              {/* Document Viewer - Calculated Width */}
+              <div 
+                className="min-h-0"
+                style={{ width: documentWidth }}
+              >
                 <DocumentViewer 
-                  document={documentToDisplay} 
+                  document={currentDocument} 
                   onTextSelect={handleTextSelect}
                   editSuggestion={latestEditSuggestion || undefined}
                   onAcceptEdit={acceptEdit}
@@ -296,8 +342,28 @@ function ChatPageContent() {
                 />
               </div>
 
-              {/* Chat - Right Sidebar */}
-              <div className="w-96 border-l border-[#2a2a2a] flex flex-col h-full min-h-0">
+              {/* Chat - Right Sidebar with Resize Handle */}
+              <div 
+                className="border-l border-[#2a2a2a] flex flex-col h-full min-h-0 relative"
+                style={{ width: `${chatWidth}px` }}
+              >
+                {/* Resize Handle */}
+                <div
+                  className={`absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize z-50 transition-all duration-200 ${
+                    isResizing ? 'bg-blue-500 w-2' : 'hover:bg-blue-500/60 hover:w-2'
+                  }`}
+                  onMouseDown={handleResizeStart}
+                  title="Drag to resize chat panel"
+                />
+                
+                {/* Resize Indicator */}
+                {isResizing && (
+                  <div className="absolute top-4 left-4 bg-black/80 text-white text-sm px-3 py-2 rounded z-50">
+                    <div>Chat: {Math.round(chatWidth)}px</div>
+                    <div>Document: Auto</div>
+                  </div>
+                )}
+                
                 <ChatInterface
                   sessionId={sessionId}
                   projectId={projectId}

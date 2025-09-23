@@ -312,7 +312,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         <div className="flex items-center space-x-3">
           <FileText className="w-5 h-5 text-green-400" />
           <div>
-            <h2 className="text-lg font-semibold text-white truncate max-w-md">{document.title}</h2>
+            <h2 className="text-lg font-semibold text-white break-words max-w-xs sm:max-w-md whitespace-normal">{document.title}</h2>
             <p className="text-xs text-gray-400">Last updated: {formatDate(document.updated_at)}</p>
           </div>
         </div>
@@ -387,7 +387,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
       </div>
 
       {/* Document Content */}
-      <ScrollArea className="flex-1 ">
+      <ScrollArea className="flex-1">
         <div className="p-8">
           <div
             ref={contentRef}

@@ -268,42 +268,73 @@ export async function register(userData: RegisterRequest): Promise<RegisterApiRe
 }
 
 // Project API functions
-export async function getUserProjects(): Promise<Project[]> {
+export interface PaginatedProjectsResponse {
+  pagination: {
+    count: number;
+    page_size: number;
+    current_page: number;
+    total_pages: number;
+    has_next: boolean;
+    has_previous: boolean;
+    next_page: number | null;
+    previous_page: number | null;
+  };
+  results: Project[];
+}
+
+export async function getUserProjects(): Promise<PaginatedProjectsResponse> {
   try {
-    console.log('[API] Fetching projects from:', '/projects/');
-    console.log('[API] Using token:', !!TokenManager.getAccessToken());
-    console.log('[API] Token value:', TokenManager.getAccessToken()?.substring(0, 20) + '...');
-    
-    const response = await projectApi.get<Project[]>('/projects/', {
-      timeout: 10000, // 10 second timeout
-      maxRedirects: 0, // Disable automatic redirects to see what's happening
+    const response = await projectApi.get<PaginatedProjectsResponse>('/projects/', {
+      maxRedirects: 0,
     });
-    console.log('[API] Projects response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('[API] Projects error:', error);
-    
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      console.log('[API] Redirect detected, trying direct backend call...');
       try {
-        const directResponse = await axios.get<Project[]>(`${API_BASE_URL}/projects/`, {
+        const directResponse = await axios.get<PaginatedProjectsResponse>(`${API_BASE_URL}/projects/`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
             'ngrok-skip-browser-warning': 'true',
           },
-          timeout: 10000,
         });
-        console.log('[API] Direct call successful:', directResponse.data);
         return directResponse.data;
       } catch (directError) {
-        console.error('[API] Direct call also failed:', directError);
         throw new Error("Failed to load projects. Please try again.");
       }
     }
-    
+    if (error instanceof Error && error.message.includes("session has expired")) {
+      throw error;
+    }
+    throw new Error("Failed to load projects. Please try again.");
+  }
+}
+
+export async function getUserProjectsPaginated(page: number = 1): Promise<PaginatedProjectsResponse> {
+  try {
+    const response = await projectApi.get<PaginatedProjectsResponse>(`/projects/?page=${page}`, {
+      maxRedirects: 0,
+    });
+    return response.data;
+  } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.get<PaginatedProjectsResponse>(`${API_BASE_URL}/projects/?page=${page}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+            'ngrok-skip-browser-warning': 'true',
+          },
+        });
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to load projects. Please try again.");
+      }
+    }
     if (error instanceof Error && error.message.includes("session has expired")) {
       throw error;
     }
@@ -335,20 +366,29 @@ export async function getProject(id: string): Promise<Project> {
   }
 }
 
-export async function getProjectSessions(projectId: string): Promise<ProjectWithSessions> {
+export interface PaginatedSessionsResponse {
+  pagination: {
+    count: number;
+    page_size: number;
+    current_page: number;
+    total_pages: number;
+    has_next: boolean;
+    has_previous: boolean;
+    next_page: number | null;
+    previous_page: number | null;
+  };
+  results: Session[];
+  project?: Project;
+}
+
+export async function getProjectSessions(projectId: string, page: number = 1): Promise<PaginatedSessionsResponse> {
   try {
-    console.log('[API] Fetching project sessions for:', projectId);
-    const response = await projectApi.get<ProjectWithSessions>(`/api/proposals/projects/${projectId}/sessions/`);
-    console.log('[API] Project sessions response:', response.data);
+    const response = await projectApi.get<PaginatedSessionsResponse>(`/api/proposals/projects/${projectId}/sessions/?page=${page}`);
     return response.data;
   } catch (error) {
-    console.error('[API] Project sessions error:', error);
-    
-    // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      console.log('[API] Redirect detected, trying direct backend call for sessions...');
       try {
-        const directResponse = await axios.get<ProjectWithSessions>(`${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/`, {
+        const directResponse = await axios.get<PaginatedSessionsResponse>(`${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/?page=${page}`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -357,14 +397,11 @@ export async function getProjectSessions(projectId: string): Promise<ProjectWith
           },
           timeout: 10000,
         });
-        console.log('[API] Direct sessions call successful:', directResponse.data);
         return directResponse.data;
       } catch (directError) {
-        console.error('[API] Direct sessions call also failed:', directError);
         throw new Error("Failed to load project sessions. Please try again.");
       }
     }
-    
     if (error instanceof Error && error.message.includes("session has expired")) {
       throw error;
     }

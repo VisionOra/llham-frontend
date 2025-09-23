@@ -40,6 +40,7 @@ function ProjectSessionsContent() {
   const projectId = params.projectId as string
 
   const [projectSessions, setProjectSessions] = useState<LocalSession[]>([])
+  const [pagination, setPagination] = useState<any>(null)
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [creatingSession, setCreatingSession] = useState(false)
 
@@ -55,62 +56,54 @@ function ProjectSessionsContent() {
 
   const loadProjectSessions = async () => {
     if (!projectId) return
-
     setLoadingSessions(true)
     try {
-      const projectWithSessions = await getProjectSessions(projectId)
-      
+      const response = await getProjectSessions(projectId, pagination?.current_page || 1)
+      setPagination(response.pagination)
       // Clean up sessions with 0 messages
       const sessionsToDelete: string[] = []
-      const validSessions = projectWithSessions.sessions.filter((session) => {
+      const validSessions = response.results.filter((session) => {
         if (session.conversation_history.length === 0) {
           sessionsToDelete.push(session.id)
           return false
         }
         return true
       })
-      
-      // Delete sessions with 0 messages
       for (const sessionId of sessionsToDelete) {
         try {
-          console.log(`Deleting empty session: ${sessionId}`)
           await deleteSession(sessionId)
         } catch (error) {
-          console.error(`Failed to delete session ${sessionId}:`, error)
+          // Optionally handle error
         }
       }
-      
-      // Map sessions to local format
-      const mappedSessions: LocalSession[] = validSessions.map((session) => {
-        return {
-          id: session.id,
-          project_id: session.project.id,
-          title: session.proposal_title || session.initial_idea || 'Untitled Session',
-          initial_idea: session.initial_idea,
-          agent_mode: session.agent_mode,
-          has_document: !!session.document || session.is_proposal_generated,
-          document: session.document,
-          created_at: session.created_at,
-          updated_at: session.updated_at,
-          proposal_title: session.proposal_title,
-          current_stage: session.current_stage,
-          is_proposal_generated: session.is_proposal_generated,
-          conversation_history: session.conversation_history,
-          user: session.user
-        }
-      })
+      const mappedSessions: LocalSession[] = validSessions.map((session) => ({
+        id: session.id,
+        project_id: session.project.id,
+        title: session.proposal_title || session.initial_idea || 'Untitled Session',
+        initial_idea: session.initial_idea,
+        agent_mode: session.agent_mode,
+        has_document: !!session.document || session.is_proposal_generated,
+        document: session.document,
+        created_at: session.created_at,
+        updated_at: session.updated_at,
+        proposal_title: session.proposal_title,
+        current_stage: session.current_stage,
+        is_proposal_generated: session.is_proposal_generated,
+        conversation_history: session.conversation_history,
+        user: session.user
+      }))
       setProjectSessions(mappedSessions)
     } catch (error) {
-      console.error('Failed to load project sessions:', error)
       setProjectSessions([])
     } finally {
       setLoadingSessions(false)
     }
   }
+  const [loadingMore, setLoadingMore] = useState(false)
 
   const handleSessionSelect = (sessionId: string) => {
-    // Navigate to chat session
-    router.push(`/chat/${sessionId}`)
+    // Navigate to chat session with project ID
+    router.push(`/chat/${sessionId}?project=${projectId}`)
   }
 
   const handleNewSession = async () => {
@@ -129,8 +122,8 @@ function ProjectSessionsContent() {
       const newSession = await createSession(sessionData)
       console.log('New session created:', newSession)
       
-      // Navigate to the new session
-      router.push(`/chat/${newSession.id}`)
+      // Navigate to the new session with project ID
+      router.push(`/chat/${newSession.id}?project=${projectId}`)
     } catch (error) {
       console.error('Failed to create new session:', error)
     } finally {
@@ -231,36 +224,35 @@ function ProjectSessionsContent() {
             </Button>
           </div>
         </div>
-
-          {loadingSessions ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-gray-400">Loading sessions...</div>
-            </div>
-          ) : projectSessions.length === 0 ? (
-            <div className="text-center py-12">
-              <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-500" />
-              <h3 className="text-lg font-medium text-white mb-2">No sessions yet</h3>
-              <p className="text-gray-400 mb-6">Start your first conversation in this project</p>
-              <Button 
-                onClick={handleNewSession}
-                disabled={creatingSession}
-                className="bg-white text-black hover:bg-gray-200"
-              >
-                {creatingSession ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating Session...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Session
-                  </>
-                )}
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4  overflow-y-auto pb-4">
+        {loadingSessions ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-gray-400">Loading sessions...</div>
+          </div>
+        ) : projectSessions.length === 0 ? (
+          <div className="text-center py-12">
+            <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-500" />
+            <h3 className="text-lg font-medium text-white mb-2">No sessions yet</h3>
+            <p className="text-gray-400 mb-6">Start your first conversation in this project</p>
+            <Button 
+              onClick={handleNewSession}
+              disabled={creatingSession}
+              className="bg-white text-black hover:bg-gray-200"
+            >
+              {creatingSession ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating Session...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Session
+                </>
+              )}
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4" style={{ maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' }}>
               {projectSessions.map((session) => (
                 <Card 
                   key={session.id} 
@@ -289,10 +281,51 @@ function ProjectSessionsContent() {
                   </CardContent>
                 </Card>
               ))}
+              {pagination?.has_next && (
+                <div className="col-span-1 md:col-span-2 flex justify-center py-4">
+                  <Button
+                    className="bg-[#1a1a1a] border border-[#2a2a2a] text-white"
+                    disabled={loadingMore}
+                    onClick={async () => {
+                      setLoadingMore(true)
+                      try {
+                        const nextPage = (pagination.current_page || 1) + 1
+                        const response = await getProjectSessions(projectId, nextPage)
+                        setPagination(response.pagination)
+                        // Clean up sessions with 0 messages
+                        const validSessions = response.results.filter((session) => session.conversation_history.length > 0)
+                        const mappedSessions: LocalSession[] = validSessions.map((session) => ({
+                          id: session.id,
+                          project_id: session.project.id,
+                          title: session.proposal_title || session.initial_idea || 'Untitled Session',
+                          initial_idea: session.initial_idea,
+                          agent_mode: session.agent_mode,
+                          has_document: !!session.document || session.is_proposal_generated,
+                          document: session.document,
+                          created_at: session.created_at,
+                          updated_at: session.updated_at,
+                          proposal_title: session.proposal_title,
+                          current_stage: session.current_stage,
+                          is_proposal_generated: session.is_proposal_generated,
+                          conversation_history: session.conversation_history,
+                          user: session.user
+                        }))
+                        setProjectSessions((prev) => [...prev, ...mappedSessions])
+                      } catch (e) {
+                        // Optionally handle error
+                      } finally {
+                        setLoadingMore(false)
+                      }
+                    }}
+                  >
+                    {loadingMore ? 'Loading...' : 'Load More'}
+                  </Button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+        )}
       </div>
+    </div>
   )
 }
 

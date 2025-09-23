@@ -31,7 +31,7 @@ function DashboardContent() {
       // Cleanup logic here if needed
     }
     
-    if (isAuthenticated && projects.length > 0 && !cleanupDoneRef.current) {
+  if (isAuthenticated && Array.isArray(projects) && projects.length > 0 && !cleanupDoneRef.current) {
       cleanupEmptyProjects()
     }
   }, [projects, isAuthenticated])
@@ -56,8 +56,8 @@ function DashboardContent() {
       const newProject = response.project
       const newSession = response.session
       
-      // Navigate to the new session
-      router.push(`/chat/${newSession.id}`)
+      // Navigate to the new session with project ID
+      router.push(`/chat/${newSession.id}?project=${newProject.id}`)
       
     } catch (error) {
       console.error("[Dashboard] Failed to create project with session:", error)

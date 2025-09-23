@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ArrowLeft, User, LogOut, Search, Clock, Plus } from "lucide-react"
 import { useProjects } from "@/contexts/project-context"
+import { getUserProjectsPaginated } from "@/lib/api"
 
 interface ChatSidebarProps {
   user?: {
@@ -27,7 +28,15 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   onNewProject,
   showProjects = false 
 }: ChatSidebarProps) {
-  const { projects, createProject } = useProjects()
+  const { projects: contextProjects, pagination: contextPagination, refreshProjects, createProject } = useProjects()
+  const [projects, setProjects] = useState(contextProjects)
+  const [pagination, setPagination] = useState(contextPagination)
+  const [loadingMore, setLoadingMore] = useState(false)
+  // Sync local state with context when context changes
+  React.useEffect(() => {
+    setProjects(contextProjects)
+    setPagination(contextPagination)
+  }, [contextProjects, contextPagination])
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const [newProjectName, setNewProjectName] = useState("")
   const [isCreatingProject, setIsCreatingProject] = useState(false)
@@ -61,7 +70,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   }
 
   return (
-    <div className="w-64 bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col h-full">
+    <div className="w-[256px] bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-[#2a2a2a]">
         <div className="flex items-center space-x-2 mb-4">
@@ -136,6 +145,27 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                   </div>
                 </div>
               ))}
+              {pagination?.has_next && (
+                <Button
+                  className="w-full mt-2 bg-[#1a1a1a] border border-[#2a2a2a] text-white"
+                  disabled={loadingMore}
+                  onClick={async () => {
+                    setLoadingMore(true)
+                    try {
+                      const nextPage = (pagination.current_page || 1) + 1
+                      const response = await getUserProjectsPaginated(nextPage)
+                      setProjects((prev: any) => [...prev, ...response.results])
+                      setPagination(response.pagination)
+                    } catch (e) {
+                      // Optionally handle error
+                    } finally {
+                      setLoadingMore(false)
+                    }
+                  }}
+                >
+                  {loadingMore ? 'Loading...' : 'Load More'}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="p-4 text-center text-gray-500">
