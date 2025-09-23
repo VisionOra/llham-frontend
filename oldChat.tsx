@@ -1,7 +1,8 @@
 "use client"
 
-import React from "react"
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import type React from "react"
+
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -48,7 +49,7 @@ interface ChatInterfaceProps {
   onDocumentGenerated?: (document: any) => void
 }
 
-export const ChatInterface = React.memo(function ChatInterface({
+export function ChatInterface({
   sessionId,
   projectId,
   onNewChat,
@@ -80,13 +81,12 @@ export const ChatInterface = React.memo(function ChatInterface({
     endSession
   } = useWebSocket()
 
-  // Memoize expensive computations
-  const isStreaming = useMemo(() => 
-    messages.some(msg => 
-      msg.type === 'ai' && 
-      msg.id.startsWith('streaming-') && 
-      !msg.suggestions // Complete messages have suggestions
-    ), [messages])
+  // Check if there's a streaming message (incomplete)
+  const isStreaming = messages.some(msg => 
+    msg.type === 'ai' && 
+    msg.id.startsWith('streaming-') && 
+    !msg.suggestions // Complete messages have suggestions
+  )
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -100,7 +100,7 @@ export const ChatInterface = React.memo(function ChatInterface({
     }
   }, [currentDocument, onDocumentGenerated])
 
-  // Start session when sessionId is provided - memoized to prevent excessive calls
+  // Start session when sessionId is provided
   useEffect(() => {
     if (sessionId && sessionId !== activeSessionId) {
       console.log('[ChatInterface] Starting session:', sessionId)
@@ -113,8 +113,8 @@ export const ChatInterface = React.memo(function ChatInterface({
 
   // Remove auto-send functionality - users will manually paste and request edits
 
-  // Memoize helper functions
-  const detectPastedContent = useCallback((message: string) => {
+  // Detect if message contains pasted document content
+  const detectPastedContent = (message: string) => {
     // Look for specific document patterns that indicate pasted content
     const hasDocumentPatterns = /Essential Features|Advanced Features|Core Features|Project Planning|Technical Specification|Must-Have|Nice-to-Have|Business Analysis|Resource Allocation|Architecture Considerations|Integration Requirements|Security and Compliance|Unique Differentiators|Technology Stack|Frontend|Backend|Database|Infrastructure|Microservices|Scalability|Performance|Authentication|User Management|Responsive Design|Export and Deployment|Target Audience|Small to Medium|Startups|Enterprise|Non-Technical|Developers/i.test(message)
     const hasColons = message.includes(':')
@@ -133,9 +133,9 @@ export const ChatInterface = React.memo(function ChatInterface({
     // Detect as pasted if it has document patterns AND colons (typical of document sections)
     // OR if it has document patterns AND edit keywords (user pasted + added request)
     return hasDocumentPatterns && (hasColons || hasEditKeywords)
-  }, [])
+  }
 
-  const formatMessageForDisplay = useCallback((message: string): FormattedMessage => {
+  const formatMessageForDisplay = (message: string): FormattedMessage => {
     console.log('[ChatInterface] Analyzing message:', message)
     console.log('[ChatInterface] Is pasted content:', detectPastedContent(message))
     
@@ -180,21 +180,15 @@ export const ChatInterface = React.memo(function ChatInterface({
       isPastedContent: false,
       originalMessage: message
     }
-  }, [detectPastedContent])
+  }
 
-  const handleSendMessage = useCallback(async () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return
 
-    // Handle welcome mode differently - don't require WebSocket connection
+    // Handle welcome mode differently
     if (isWelcomeMode) {
       onNewChat(inputValue)
       setInputValue("")
-      return
-    }
-
-    // For chat mode, require WebSocket connection
-    if (connectionStatus !== 'connected') {
-      console.warn('Cannot send message: WebSocket not connected')
       return
     }
 
@@ -215,16 +209,16 @@ export const ChatInterface = React.memo(function ChatInterface({
       // Send regular message
       sendMessage(inputText)
     }
-  }, [inputValue, isWelcomeMode, onNewChat, connectionStatus, formatMessageForDisplay, sendMessage])
+  }
 
-  const handleFileUploaded = useCallback((file: UploadedFile) => {
+  const handleFileUploaded = (file: UploadedFile) => {
     // TODO: Implement file upload via WebSocket
     console.log('File uploaded:', file.name);
     
     // Send a message about the file upload
     const uploadMessage = `I've uploaded "${file.name}" (${formatFileSize(file.size)}). Please analyze this document and help me with it.`;
     sendMessage(uploadMessage);
-  }, [sendMessage])
+  }
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes"
@@ -235,17 +229,17 @@ export const ChatInterface = React.memo(function ChatInterface({
   }
 
 
-  const handleSuggestionClick = useCallback((suggestion: string) => {
+  const handleSuggestionClick = (suggestion: string) => {
     setInputValue(suggestion)
     textareaRef.current?.focus()
-  }, [])
+  }
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
     }
-  }, [handleSendMessage])
+  }
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("en-US", {
@@ -301,11 +295,11 @@ export const ChatInterface = React.memo(function ChatInterface({
             <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2">
               <Button
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || (!isWelcomeMode && (connectionStatus !== 'connected' || isGeneratingProposal))}
+                disabled={!inputValue.trim() || connectionStatus !== 'connected' || isGeneratingProposal}
                 size="sm"
                 className="bg-gradient-to-r from-white to-gray-100 text-black hover:from-gray-100 hover:to-gray-200 rounded-xl px-4 py-2 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {!isWelcomeMode && (connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {(connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
             </div>
 
@@ -559,7 +553,26 @@ export const ChatInterface = React.memo(function ChatInterface({
             </div>
           )}
 
-        
+          {/* AI Typing Indicator */}
+          {isTyping && (
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="inline-block p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                    <span className="text-sm text-gray-400">AI is typing...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Connection status indicator */}
           {connectionStatus !== 'connected' && (
@@ -597,7 +610,7 @@ export const ChatInterface = React.memo(function ChatInterface({
               placeholder={
                 isDocumentMode ? "Paste selected text and add your request (e.g., 'make it more concise', 'modify this section')..." : "Tell me about your project idea..."
               }
-              className="min-h-[44px] max-h-32 resize-none bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-400  pt-3"
+              className="min-h-[44px] max-h-32 resize-none bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-400  "
               rows={1}
             />
           </div>
@@ -607,27 +620,27 @@ export const ChatInterface = React.memo(function ChatInterface({
             disabled={!inputValue.trim() || connectionStatus !== 'connected' || isGeneratingProposal}
             className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50"
           >
-            {(connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            <Send className="w-4 h-4" />
           </Button>
         </div>
 
-        <div className="flex items-center justify-between text-center mt-2">
-          <p className="text-xs text-gray-500 text-center mx-auto">
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-gray-500">
             {isDocumentMode
               ? "Select text in document → Copy → Paste here with your request • Upload files for reference"
               : "Press Enter to send, Shift+Enter for new line • Upload PDF/Word files"}
           </p>
           
-          {/* <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2">
             <div className={`w-2 h-2 rounded-full ${
               connectionStatus === 'connected' ? 'bg-green-500' : 
               connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 
               'bg-red-500'
             }`} />
             <span className="text-xs text-gray-500 capitalize">{connectionStatus}</span>
-          </div> */}
+          </div>
         </div>
       </div>
     </div>
   )
-})
+}

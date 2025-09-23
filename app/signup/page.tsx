@@ -58,15 +58,15 @@ function SignupForm() {
 
     try {
       const response = await apiRegister(formData)
-
-      if (response.status === "success") {
-        login(response.user, response.access_token, response.refresh_token)
+      // Check for status code 201 for success
+      if (response.status === 201 ) {
+        login(response.data.user, response.data.access_token, response.data.refresh_token)
         router.push("/")
       } else {
-        setError(response.message || "Registration failed")
+        setError(response.data.message || "Registration failed")
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred during registration")
+    } catch (err: any) {
+      setError("Registration failed")
     } finally {
       setIsLoading(false)
     }
