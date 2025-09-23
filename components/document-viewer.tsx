@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Download, Printer, Edit3, ZoomIn, ZoomOut, Type, Copy, Check, X } from "lucide-react"
+import { FileText, Printer, Edit3, ZoomIn, ZoomOut, Type, Copy, Check, X } from "lucide-react"
+import { PdfExporter } from "@/components/pdf-exporter"
 
 interface Document {
   id?: string
@@ -41,32 +42,51 @@ interface DocumentViewerProps {
 
 export function DocumentViewer({ document, onTextSelect, editSuggestion, onAcceptEdit, onRejectEdit }: DocumentViewerProps) {
   const [selectedText, setSelectedText] = useState("")
-  const [zoomLevel, setZoomLevel] = useState(100)
+  const [zoomLevel, setZoomLevel] = useState(80)
   const [isSelecting, setIsSelecting] = useState(false)
   const [copied, setCopied] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  // Debug: Log document content type and value
-  useEffect(() => {
-    console.log('[DocumentViewer] Document content debug:', {
-      hasDocument: !!document,
-      contentType: typeof document?.content,
-      contentValue: document?.content,
-      isString: typeof document?.content === 'string',
-      isObject: typeof document?.content === 'object',
-      contentKeys: typeof document?.content === 'object' && document?.content !== null 
-        ? Object.keys(document.content) 
-        : null
-    })
-  }, [document])
-
   // Process document content to make text selection more precise
   const processedContent = (() => {
-    if (!document?.content) return ''
+    let rawContent = null
+    const doc = document as any
     
-    // If content is already a string, use it directly
-    if (typeof document.content === 'string') {
-      return document.content
+    // Try different possible content locations based on document structure
+    if (doc?.content && typeof doc.content === 'string') {
+      // Case 1: Direct HTML content in document.content (first load)
+      rawContent = doc.content
+    } else if (doc?.document && typeof doc.document === 'string') {
+      // Case 2: HTML content in document.document property (after updates)
+      rawContent = doc.document
+    } else if (doc?.content && typeof doc.content === 'object') {
+      // Case 3: Content is an object, try to extract HTML
+      const content = doc.content as any
+      rawContent = content.html || 
+                  content.content || 
+                  content.document ||
+                  content.body || 
+                  content.text || 
+                  content.data
+    } else if (typeof doc === 'string') {
+      // Case 4: The entire document might be a string
+      rawContent = doc
+    }
+    
+    if (!rawContent) return ''
+    
+    // Handle different content types
+    let contentString = ''
+    if (typeof rawContent === 'string') {
+      contentString = rawContent
+    } else {
+      // Fallback for other types
+      contentString = String(rawContent)
+    }
+    
+    // Ensure we have a string and apply regex replacements for better text selection
+    if (contentString && typeof contentString === 'string') {
+      return contentString
         // Add word boundaries to make selection more precise
         .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
         .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
@@ -75,42 +95,20 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         .replace(/(<th[^>]*>)(.*?)(<\/th>)/g, '$1<span class="selectable-text">$2</span>$3')
     }
     
-    // If content is an object, try to extract HTML content from common fields
-    if (typeof document.content === 'object' && document.content !== null) {
-      const contentObj = document.content as any
-      
-      // Try common content field names
-      const possibleContent = contentObj.document || 
-                             contentObj.content || 
-                             contentObj.html_content || 
-                             contentObj.body || 
-                             contentObj.text || 
-                             contentObj.proposal_content
-      
-      if (typeof possibleContent === 'string') {
-        return possibleContent
-          .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
-          .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
-          .replace(/(<li[^>]*>)(.*?)(<\/li>)/g, '$1<span class="selectable-text">$2</span>$3')
-          .replace(/(<td[^>]*>)(.*?)(<\/td>)/g, '$1<span class="selectable-text">$2</span>$3')
-          .replace(/(<th[^>]*>)(.*?)(<\/th>)/g, '$1<span class="selectable-text">$2</span>$3')
-      }
-      
-      // If it's still an object, try JSON.stringify as fallback
-      try {
-        return `<pre>${JSON.stringify(contentObj, null, 2)}</pre>`
-      } catch (e) {
-        return '<p>Unable to display document content</p>'
-      }
-    }
-    
-    // Fallback: convert whatever it is to string
-    return String(document.content)
+    return contentString || ''
   })()
 
   useEffect(() => {
-    console.log("[v0] DocumentViewer received document:", document)
-  }, [document])
+    console.log("[DocumentViewer] Received document:", {
+      document: document,
+      hasContent: !!document?.content,
+      contentType: typeof document?.content,
+      contentKeys: document?.content && typeof document.content === 'object' ? Object.keys(document.content) : [],
+      contentValue: document?.content,
+      processedContentLength: processedContent?.length || 0,
+      processedContentPreview: typeof processedContent === 'string' ? processedContent.substring(0, 200) : String(processedContent).substring(0, 200) || 'No content'
+    })
+  }, [document, processedContent])
 
   useEffect(() => {
     let startNode: Node | null = null
@@ -156,6 +154,11 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
             setSelectedText(text)
             setIsSelecting(true)
             setCopied(false)
+            
+            // Notify parent component about text selection
+            if (onTextSelect && contentElement) {
+              onTextSelect(text, contentElement)
+            }
           }
         }
       }, 10)
@@ -174,56 +177,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
       }
     }
   }, [document])
-
-  const handleExport = () => {
-    if (!document) return
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>${document.title}</title>
-          <style>
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              max-width: 800px; 
-              margin: 0 auto; 
-              padding: 40px 20px; 
-              line-height: 1.6; 
-              color: #333;
-            }
-            h1, h2, h3 { color: #2d3748; margin-top: 2em; margin-bottom: 0.5em; }
-            h1 { border-bottom: 2px solid #4a5568; padding-bottom: 10px; }
-            h2 { border-left: 4px solid #4a5568; padding-left: 15px; }
-            p { margin-bottom: 1em; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
-            th { background: #f7fafc; font-weight: bold; }
-            ul, ol { padding-left: 30px; margin-bottom: 1em; }
-            li { margin-bottom: 0.5em; }
-            blockquote { 
-              border-left: 4px solid #e2e8f0; 
-              padding-left: 20px; 
-              margin: 20px 0; 
-              font-style: italic; 
-            }
-          </style>
-        </head>
-        <body>
-          ${document.content}
-        </body>
-      </html>
-    `
-
-    const blob = new Blob([htmlContent], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-    const a = window.document.createElement("a")
-    a.href = url
-    a.download = `${document.title.replace(/[^a-zA-Z0-9]/g, "_")}.html`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
 
   const handlePrint = () => {
     window.print()
@@ -312,7 +265,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         <div className="flex items-center space-x-3">
           <FileText className="w-5 h-5 text-green-400" />
           <div>
-            <h2 className="text-lg font-semibold text-white truncate max-w-md">{document.title}</h2>
+            <h2 className="text-lg font-semibold text-white break-words max-w-xs sm:max-w-md whitespace-normal">{document.title}</h2>
             <p className="text-xs text-gray-400">Last updated: {formatDate(document.updated_at)}</p>
           </div>
         </div>
@@ -352,15 +305,13 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
             Print
           </Button>
 
-          <Button
+          <PdfExporter
+            document={document}
+            processedContent={processedContent}
             variant="outline"
             size="sm"
-            onClick={handleExport}
             className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a] bg-transparent"
-          >
-            <Download className="w-4 h-4 mr-1" />
-            Export
-          </Button>
+          />
         </div>
       </div>
 
@@ -387,7 +338,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
       </div>
 
       {/* Document Content */}
-      <ScrollArea className="flex-1 ">
+      <ScrollArea className="flex-1">
         <div className="p-8">
           <div
             ref={contentRef}

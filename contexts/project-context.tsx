@@ -6,18 +6,29 @@ import { useAuth } from "./auth-context"
 
 interface ProjectContextType {
   projects: Project[]
-  currentProject: Project | null
-  isLoading: boolean
-  error: string | null
-  createProject: (title: string) => Promise<void>
-  selectProject: (project: Project) => void
-  refreshProjects: () => Promise<void>
+  pagination: {
+    count: number;
+    page_size: number;
+    current_page: number;
+    total_pages: number;
+    has_next: boolean;
+    has_previous: boolean;
+    next_page: number | null;
+    previous_page: number | null;
+  } | null;
+  currentProject: Project | null;
+  isLoading: boolean;
+  error: string | null;
+  createProject: (title: string) => Promise<void>;
+  selectProject: (project: Project) => void;
+  refreshProjects: () => Promise<void>;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined)
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([])
+  const [pagination, setPagination] = useState<ProjectContextType['pagination']>(null)
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,8 +41,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setError(null)
 
     try {
-      const userProjects = await getUserProjects()
-      setProjects(userProjects)
+  const response = await getUserProjects()
+  setProjects(response.results)
+  setPagination(response.pagination)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects")
     } finally {
@@ -74,18 +86,20 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       refreshProjects()
     } else {
       setProjects([])
+      setPagination(null)
       setCurrentProject(null)
     }
   }, [user])
 
   const value: ProjectContextType = {
-    projects,
-    currentProject,
-    isLoading,
-    error,
-    createProject,
-    selectProject,
-    refreshProjects,
+  projects,
+  pagination,
+  currentProject,
+  isLoading,
+  error,
+  createProject,
+  selectProject,
+  refreshProjects,
   }
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>

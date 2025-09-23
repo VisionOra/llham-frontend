@@ -3,12 +3,12 @@
 import React from "react"
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { FileUploadButton } from "@/components/file-upload"
 import { Send, User, Bot, FileText, Loader2, Sparkles, Shuffle, Check, X } from "lucide-react"
 import { useWebSocket } from "@/contexts/websocket-context"
+import AutoGrowTextarea from "./AutoGrowTextarea"
 
 interface Message {
   id: string
@@ -46,6 +46,9 @@ interface ChatInterfaceProps {
   isDocumentMode: boolean
   isWelcomeMode?: boolean
   onDocumentGenerated?: (document: any) => void
+  onTextSelect?: (selectedText: string, element: HTMLElement) => void
+  selectedDocumentText?: string
+  onClearSelectedText?: () => void
 }
 
 export const ChatInterface = React.memo(function ChatInterface({
@@ -55,11 +58,27 @@ export const ChatInterface = React.memo(function ChatInterface({
   isDocumentMode,
   isWelcomeMode = false,
   onDocumentGenerated,
+  onTextSelect,
+  selectedDocumentText: externalSelectedText,
+  onClearSelectedText,
 }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState("")
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Use external selected text if provided, otherwise use internal state
+  const currentSelectedText = externalSelectedText || selectedDocumentText
+  
+  // Function to clear selected text
+  const clearSelectedText = () => {
+    if (onClearSelectedText) {
+      onClearSelectedText()
+    } else {
+      setSelectedDocumentText("")
+    }
+  }
 
   // Use centralized WebSocket context
   const {
@@ -109,7 +128,17 @@ export const ChatInterface = React.memo(function ChatInterface({
       console.log('[ChatInterface] Ending session')
       endSession()
     }
-  }, [sessionId, projectId, activeSessionId, startSession, endSession])
+  }, [sessionId, projectId, activeSessionId])
+
+  // Handle text selection from document viewer
+  const handleTextSelect = useCallback((selectedText: string, element: HTMLElement) => {
+    console.log('[ChatInterface] Text selected from document:', selectedText.substring(0, 100))
+    setSelectedDocumentText(selectedText)
+    // Call parent's onTextSelect if provided
+    if (onTextSelect) {
+      onTextSelect(selectedText, element)
+    }
+  }, [onTextSelect])
 
   // Remove auto-send functionality - users will manually paste and request edits
 
@@ -183,48 +212,96 @@ export const ChatInterface = React.memo(function ChatInterface({
   }, [detectPastedContent])
 
   const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim()) return
+    if (!inputValue.trim()) return;
 
     // Handle welcome mode differently - don't require WebSocket connection
     if (isWelcomeMode) {
-      onNewChat(inputValue)
-      setInputValue("")
-      return
+      onNewChat(inputValue);
+      setInputValue("");
+      setUploadedFiles([]);
+      return;
     }
 
-    // For chat mode, require WebSocket connection
     if (connectionStatus !== 'connected') {
-      console.warn('Cannot send message: WebSocket not connected')
-      return
+      console.warn('Cannot send message: WebSocket not connected');
+      return;
     }
 
-    // Parse the input to separate document context from user message
-    const inputText = inputValue.trim()
-    const formatted = formatMessageForDisplay(inputText)
-    
-    setInputValue("")
-    
-    if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText) {
-      // Send with document_context and clean message
+    const inputText = inputValue.trim();
+    const formatted = formatMessageForDisplay(inputText);
+
+    // Prepare PDF files if any
+    let pdfFilesToSend: any[] = [];
+    if (uploadedFiles.length > 0) {
+      pdfFilesToSend = uploadedFiles.map(file => ({
+        filename: file.name,
+        content: file.content,
+        size: file.size
+      }));
+    }
+
+    setInputValue("");
+    setUploadedFiles([]);
+
+    // Determine type
+    const type = pdfFilesToSend.length > 0 ? 'pdf_upload' : 'chat_message';
+
+    // Send message with correct type and pdf_files
+    if (currentSelectedText && currentSelectedText.trim()) {
+      const contextPreview = typeof currentSelectedText === 'string' ?
+        (currentSelectedText.length > 100 ? currentSelectedText.substring(0, 100) + '...' : currentSelectedText) :
+        String(currentSelectedText);
+      console.log('[ChatInterface] Sending message with document context:', {
+        message: inputText,
+        document_context: contextPreview,
+        fullContextLength: currentSelectedText.length,
+        pdfFilesToSend
+      });
+      sendMessage(type, inputText, pdfFilesToSend, currentSelectedText);
+      clearSelectedText();
+    } else if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText) {
       console.log('[ChatInterface] Sending edit request:', {
         message: formatted.userRequest,
-        document_context: formatted.pastedText
-      })
-      sendMessage(formatted.userRequest, formatted.pastedText)
+        document_context: formatted.pastedText,
+        pdfFilesToSend
+      });
+      sendMessage(type, formatted.userRequest, pdfFilesToSend, formatted.pastedText);
     } else {
-      // Send regular message
-      sendMessage(inputText)
+      sendMessage(type, inputText, pdfFilesToSend, null);
     }
-  }, [inputValue, isWelcomeMode, onNewChat, connectionStatus, formatMessageForDisplay, sendMessage])
+  }, [inputValue, isWelcomeMode, onNewChat, connectionStatus, formatMessageForDisplay, sendMessage, currentSelectedText, clearSelectedText, uploadedFiles])
 
   const handleFileUploaded = useCallback((file: UploadedFile) => {
-    // TODO: Implement file upload via WebSocket
     console.log('File uploaded:', file.name);
     
-    // Send a message about the file upload
-    const uploadMessage = `I've uploaded "${file.name}" (${formatFileSize(file.size)}). Please analyze this document and help me with it.`;
-    sendMessage(uploadMessage);
-  }, [sendMessage])
+    // Add file to uploaded files list but don't auto-send
+    setUploadedFiles(prev => [...prev, file]);
+    
+    // Create a document/file message in chat to show the uploaded document
+    const fileMessage: Message = {
+      id: `file-${file.id}`,
+      type: "file",
+      content: file.content || `Document uploaded: ${file.name}`,
+      timestamp: new Date(),
+      fileName: file.name,
+      fileSize: file.size
+    };
+    
+    // Add the file message to chat (if using WebSocket context)
+    // if (sendMessage) {
+    //   // Don't send via WebSocket, just display locally
+    //   // We'll need to add this to local messages state or WebSocket context
+    // }
+    
+    // Optionally pre-populate the input with a suggestion, but don't send
+    if (!inputValue.trim()) {
+      setInputValue(`Please analyze the uploaded document and help me with it.`);
+    }
+  }, [inputValue, sendMessage])
+
+  const removeUploadedFile = useCallback((fileId: string) => {
+    setUploadedFiles(prev => prev.filter(file => file.id !== fileId));
+  }, [])
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes"
@@ -258,45 +335,38 @@ export const ChatInterface = React.memo(function ChatInterface({
     return (
       <div className="w-full max-w-4xl mx-auto px-4">
         <div className="relative">
+          {/* Selected Text Indicator */}
+          {currentSelectedText && (
+            <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+              <div className="flex items-center space-x-2 mb-2">
+                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                <span className="text-xs font-medium text-blue-300">SELECTED TEXT CONTEXT</span>
+                <button 
+                  onClick={clearSelectedText}
+                  className="ml-auto text-gray-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded max-h-20 overflow-y-auto">
+                {currentSelectedText.length > 200 ? currentSelectedText.substring(0, 200) + '...' : currentSelectedText}
+              </div>
+            </div>
+          )}
+          
           <div className="relative group">
-            <Textarea
-              ref={textareaRef}
+            <AutoGrowTextarea
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask v0 to build..."
-              className="w-full min-h-[64px] bg-gradient-to-br from-[#1a1a1a] via-[#1e1e1e] to-[#1a1a1a] border border-[#2a2a2a] hover:border-[#3a3a3a] focus:border-[#4a4a4a] text-white placeholder-gray-400 focus:ring-0 text-base sm:text-lg px-6 py-5 pr-24 sm:pr-28 rounded-2xl resize-none transition-all duration-200 shadow-lg hover:shadow-xl backdrop-blur-sm"
-              rows={1}
-              style={{
-                background: "linear-gradient(135deg, #1a1a1a 0%, #1e1e1e 50%, #1a1a1a 100%)",
-                boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+              setValue={setInputValue}
+              onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
               }}
             />
 
-            {/* <div className="absolute left-4 sm:left-6 top-4 sm:top-5 flex items-center space-x-2">
-              <div className="hidden sm:flex items-center space-x-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  <span className="hidden md:inline">AI</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <Shuffle className="w-3 h-3 mr-1" />
-                  <span className="hidden md:inline">Random</span>
-                </Button>
-              </div>
-              <div className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-xs px-3 py-1.5 rounded-full flex items-center space-x-1.5 shadow-lg">
-                <span>🌙</span>
-                <span className="font-medium">Cosmic Night</span>
-              </div>
-            </div> */}
+          
 
             <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2">
               <Button
@@ -387,30 +457,38 @@ export const ChatInterface = React.memo(function ChatInterface({
                     {/* Cursor AI style display for user messages with pasted content */}
                     {message.type === "user" && (() => {
                       const formatted = formatMessageForDisplay(message.content)
-                      if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText && formatted.preview) {
-                        return (
-                          <div className="space-y-2">
-                            {/* User's request */}
-                            <p className="text-sm font-medium">{formatted.userRequest}</p>
-                            
-                            {/* Pasted content preview - Cursor style */}
-                            <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                <span className="text-xs font-medium text-blue-200">SELECTED TEXT</span>
-                              </div>
-                              <p className="text-xs text-gray-300 font-mono">
-                                {formatted.preview}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                {formatted.pastedText.length} characters
-                              </p>
+                      const isFileUploadRequest = message.content?.toLowerCase().includes("upload")
+                      return (
+                        <>
+                          {isFileUploadRequest && (
+                            <div className="bg-[#18181b] border border-[#232326] rounded-lg px-4 py-3 flex items-center space-x-3 mb-2">
+                              <span className="text-2xl">📄</span>
+                              <span className="text-sm text-gray-200 font-medium">Uploaded 1 PDF file</span>
                             </div>
-                          </div>
-                        )
-                      } else {
-                        return <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-                      }
+                          )}
+                          {formatted.isPastedContent && formatted.userRequest && formatted.pastedText && formatted.preview ? (
+                            <div className="space-y-2">
+                              {/* User's request */}
+                              <p className="text-sm font-medium">{formatted.userRequest}</p>
+                              {/* Pasted content preview - Cursor style */}
+                              <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                  <span className="text-xs font-medium text-blue-200">SELECTED TEXT</span>
+                                </div>
+                                <p className="text-xs text-gray-300 font-mono">
+                                  {formatted.preview}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {formatted.pastedText.length} characters
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                          )}
+                        </>
+                      )
                     })()}
                     
                     {/* Regular content for non-user messages */}
@@ -585,20 +663,55 @@ export const ChatInterface = React.memo(function ChatInterface({
 
       {/* Input Area */}
       <div className="p-4 border-t border-[#2a2a2a]">
+        {/* Uploaded Files Display */}
+        {uploadedFiles.length > 0 && (
+          <div className="mb-3 space-y-2">
+            <div className="text-xs text-gray-400 mb-2">Attached Files:</div>
+            {uploadedFiles.map((file) => (
+              <div key={file.id} className="flex items-center space-x-3 p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg">
+                <div className="flex-shrink-0">
+                  <FileText className="w-5 h-5 text-blue-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-white font-medium truncate">{file.name}</div>
+                  <div className="text-xs text-gray-400">
+                    {formatFileSize(file.size)} • {file.type}
+                    {file.status === 'uploading' && (
+                      <span className="ml-2 text-blue-400">Uploading... {file.progress}%</span>
+                    )}
+                    {file.status === 'processing' && (
+                      <span className="ml-2 text-yellow-400">Processing...</span>
+                    )}
+                    {file.status === 'error' && (
+                      <span className="ml-2 text-red-400">Error: {file.error}</span>
+                    )}
+                    {file.status === 'completed' && (
+                      <span className="ml-2 text-green-400">Ready</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeUploadedFile(file.id)}
+                  className="flex-shrink-0 p-1 text-gray-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                  title="Remove file"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center space-x-2 justify-center">
           <FileUploadButton onFileUploaded={handleFileUploaded} />
 
           <div className="flex-1">
-            <Textarea
-              ref={textareaRef}
+            <AutoGrowTextarea
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                isDocumentMode ? "Paste selected text and add your request (e.g., 'make it more concise', 'modify this section')..." : "Tell me about your project idea..."
-              }
-              className="min-h-[44px] max-h-32 resize-none bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-400  pt-3"
-              rows={1}
+              setValue={setInputValue}
+              placeholder={isDocumentMode
+                ? "Paste selected text and add your request (e.g., 'make it more concise', 'modify this section')..."
+                : "Tell me about your project idea..."}
             />
           </div>
 
@@ -614,7 +727,7 @@ export const ChatInterface = React.memo(function ChatInterface({
         <div className="flex items-center justify-between text-center mt-2">
           <p className="text-xs text-gray-500 text-center mx-auto">
             {isDocumentMode
-              ? "Select text in document → Copy → Paste here with your request • Upload files for reference"
+              ? "Select text in document and write your querry here"
               : "Press Enter to send, Shift+Enter for new line • Upload PDF/Word files"}
           </p>
           

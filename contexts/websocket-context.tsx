@@ -18,7 +18,7 @@ interface WebSocketContextType {
   latestEditSuggestion: ChatMessage | null
   isTyping: boolean
   pendingMessage: string | null
-  sendMessage: (message: string, documentContext?: string | null) => void
+  sendMessage: (type: string, message: string, pdfFiles: any[], documentContext?: string | null) => void
   setPendingMessage: (message: string | null) => void
   acceptEdit: (editId: string) => void
   rejectEdit: (editId: string) => void
@@ -34,6 +34,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
   const lastConnectionAttempt = useRef<number>(0)
   const connectionTimeout = useRef<NodeJS.Timeout | null>(null)
+  const fetchedDocumentsRef = useRef<Set<string>>(new Set())
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -54,12 +55,19 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const currentMessageRef = useRef<string>('')
   const currentMessageIdRef = useRef<string | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const messageCounter = useRef(0)
  
 
   // Function to fetch generated document after workflow completion
   const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
+    if (fetchedDocumentsRef.current.has(sessionId)) {
+      console.log('📄 Document already fetched for session:', sessionId)
+      return
+    }
+
     try {
       console.log('📄 Fetching generated document for session:', sessionId)
+      fetchedDocumentsRef.current.add(sessionId)
       const response = await fetch(`${API_BASE_URL}/documents/${sessionId}/`, {
         headers: {
           'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
@@ -83,9 +91,11 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         })
       } else {
         console.error('📄 Failed to fetch document:', response.status)
+        fetchedDocumentsRef.current.delete(sessionId)
       }
     } catch (error) {
       console.error('📄 Error fetching generated document:', error)
+      fetchedDocumentsRef.current.delete(sessionId)
     }
   }, [API_BASE_URL])
 
@@ -148,7 +158,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             case 'ai_message_chunk':
               console.log('📥 AI message chunk received')
               
-              const streamingId = `streaming-${data.session_id}`
+              // Create unique streaming ID for each new message
+              if (!currentMessageIdRef.current) {
+                messageCounter.current += 1
+                currentMessageIdRef.current = `streaming-${data.session_id}-${messageCounter.current}`
+              }
+              
+              const streamingId = currentMessageIdRef.current
               
               // Always use current_text (full text so far) for consistent display
               const currentContent = data.current_text || ''
@@ -184,37 +200,42 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             case 'ai_message_complete':
               console.log('✅ AI message complete')
               
-              const completionStreamingId = `streaming-${data.session_id}`
+              const completionStreamingId = currentMessageIdRef.current
               
-              // Finalize the streaming message
-              setMessages(prev => {
-                const existingIndex = prev.findIndex(msg => msg.id === completionStreamingId)
-                
-                if (existingIndex >= 0) {
-                  const updated = [...prev]
-                  updated[existingIndex] = {
-                    ...updated[existingIndex],
-                    content: data.final_text || updated[existingIndex].content,
-                    isStreaming: false,
-                    suggestions: data.suggested_questions,
-                    suggestedQuestions: data.suggested_questions
+              if (completionStreamingId) {
+                // Finalize the streaming message
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(msg => msg.id === completionStreamingId)
+                  
+                  if (existingIndex >= 0) {
+                    const updated = [...prev]
+                    updated[existingIndex] = {
+                      ...updated[existingIndex],
+                      content: data.final_text || updated[existingIndex].content,
+                      isStreaming: false,
+                      suggestions: data.suggested_questions,
+                      suggestedQuestions: data.suggested_questions
+                    }
+                    return updated
+                  } else {
+                    // Fallback: create new message if streaming message wasn't found
+                    return [...prev, {
+                      id: Date.now().toString(),
+                      type: 'ai' as const,
+                      content: data.final_text || '',
+                      timestamp: new Date(),
+                      sessionId: data.session_id,
+                      projectId: data.project_id,
+                      suggestions: data.suggested_questions,
+                      suggestedQuestions: data.suggested_questions,
+                      isStreaming: false
+                    }]
                   }
-                  return updated
-                } else {
-                  // Fallback: create new message if streaming message wasn't found
-                  return [...prev, {
-                    id: Date.now().toString(),
-                    type: 'ai' as const,
-                    content: data.final_text || '',
-                    timestamp: new Date(),
-                    sessionId: data.session_id,
-                    projectId: data.project_id,
-                    suggestions: data.suggested_questions,
-                    suggestedQuestions: data.suggested_questions,
-                    isStreaming: false
-                  }]
-                }
-              })
+                })
+                
+                // Reset streaming state for next message
+                currentMessageIdRef.current = null
+              }
               
               // Clear streaming state
               setCurrentStreamingMessage(null)
@@ -505,7 +526,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       console.error('Failed to create WebSocket connection:', error)
       setConnectionStatus('error')
     }
-  }, [activeSessionId, fetchGeneratedDocument, API_BASE_URL])
+  }, [activeSessionId, API_BASE_URL])
 
   const handleReconnection = useCallback(() => {
     // Only reconnect if we have an active session
@@ -532,17 +553,19 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
   }, [connect, activeSessionId])
 
-  const sendMessage = useCallback((message: string, documentContext: string | null = null) => {
+  const sendMessage = useCallback((type: string, message: string, pdfFiles: any[], documentContext: string | null = null) => {
     if (socket?.readyState === WebSocket.OPEN && activeSessionId) {
       const payload = {
-        type: 'chat_message',
+        type: type,
         message,
         session_id: activeSessionId,
+        pdf_files: pdfFiles,
         project_id: activeProjectId,
         document_context: documentContext
       }
       
       console.log('📤 Sending message:', payload)
+      console.log('📤 Active Project ID:', activeProjectId)
       socket.send(JSON.stringify(payload))
       
       // Add user message to chat - show the original input for display
@@ -599,12 +622,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const requestEdit = useCallback((selectedText: string, documentContext: string) => {
     if (socket?.readyState === WebSocket.OPEN) {
       const message = `Please edit this section: "${selectedText}"`
-      sendMessage(message, documentContext)
+  sendMessage('chat_message', message, [], documentContext)
     }
   }, [socket, sendMessage])
 
   const startSession = useCallback(async (sessionId: string, projectId: string | null = null) => {
     console.log('🔌 Starting session:', sessionId, 'Project:', projectId)
+    console.log('🔌 ProjectId type:', typeof projectId, 'Value:', projectId)
     
     // If we already have a connection for this session, don't reconnect
     if (activeSessionId === sessionId && socket?.readyState === WebSocket.OPEN) {
@@ -622,6 +646,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
     setActiveSessionId(sessionId)
     setActiveProjectId(projectId)
+    console.log('🔌 Set activeProjectId to:', projectId)
     
     // Clear state for new session
     setMessages([])
@@ -674,7 +699,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     
     // Connect WebSocket
     connect()
-  }, [socket, activeSessionId, connect, fetchGeneratedDocument])
+  }, [socket, activeSessionId, connect])
 
   const endSession = useCallback(() => {
     console.log('🔌 Ending session')
@@ -694,6 +719,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setConnectionStatus('disconnected')
     setMessages([])
     setCurrentDocument(null)
+    fetchedDocumentsRef.current.clear()
     setIsGeneratingProposal(false)
     setCurrentStage(null)
     setProgress(0)
@@ -701,6 +727,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setIsTyping(false)
     currentMessageRef.current = ''
     currentMessageIdRef.current = null
+    messageCounter.current = 0
 
     setCurrentStreamingMessage(null)
     setLatestEditSuggestion(null)
@@ -708,13 +735,15 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   const clearMessages = useCallback(() => {
     setMessages([])
+    messageCounter.current = 0
+    currentMessageIdRef.current = null
   }, [])
 
   // Auto-send pending message when session is active and connected
   useEffect(() => {
     if (activeSessionId && pendingMessage && connectionStatus === 'connected' && socket?.readyState === WebSocket.OPEN) {
       console.log('[WebSocket] Auto-sending pending message:', pendingMessage)
-      sendMessage(pendingMessage)
+  sendMessage('chat_message', pendingMessage, [], null)
       setPendingMessage(null) // Clear after sending
     }
   }, [activeSessionId, pendingMessage, connectionStatus, socket, sendMessage])
@@ -744,7 +773,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     latestEditSuggestion,
     isTyping,
     pendingMessage,
-    sendMessage,
+  sendMessage,
     setPendingMessage,
     acceptEdit,
     rejectEdit,
