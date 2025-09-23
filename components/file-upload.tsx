@@ -54,14 +54,18 @@ export function FileUpload({
   }
 
   const processFile = async (file: File): Promise<string> => {
-    // Mock file processing - replace with actual file parsing
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(
-          `Processed content from ${file.name}:\n\nThis is mock content extracted from the uploaded file. In a real implementation, this would contain the actual text content extracted from PDF, Word documents, or other file types.`,
-        )
-      }, 2000)
-    })
+    // Convert file to base64 string
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // Remove the data URL prefix
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   const uploadFile = useCallback(
@@ -296,18 +300,36 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
         return
       }
 
-      // Create uploaded file object
-      const uploadedFile: UploadedFile = {
-        id: Date.now().toString(),
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        status: "completed",
-        progress: 100,
-        content: `Content from ${file.name} would be processed here.`,
-      }
-
-      onFileUploaded(uploadedFile)
+      // Process file to base64 before creating UploadedFile
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        const uploadedFile: UploadedFile = {
+          id: Date.now().toString(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          status: "completed",
+          progress: 100,
+          content: base64,
+        };
+        onFileUploaded(uploadedFile);
+      };
+      reader.onerror = () => {
+        const uploadedFile: UploadedFile = {
+          id: Date.now().toString(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          status: "error",
+          progress: 100,
+          content: undefined,
+          error: "Failed to convert file to base64",
+        };
+        onFileUploaded(uploadedFile);
+      };
+      reader.readAsDataURL(file);
     }
   }
 
@@ -317,7 +339,7 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
         variant="outline"
         size="sm"
         onClick={() => fileInputRef.current?.click()}
-        className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a] hover:text-white"
+        className="border-[#2a2a2a] text-black/70 hover:bg-[#1a1a1a] hover:text-white"
       >
         <Paperclip className="w-4 h-4" />
       </Button>

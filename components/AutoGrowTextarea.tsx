@@ -1,12 +1,14 @@
 import { useRef, useEffect } from "react"
 
+
 interface AutoGrowTextareaProps {
-  value: string
-  setValue: (val: string) => void
-  placeholder?: string
+  value: string;
+  setValue: (val: string) => void;
+  placeholder?: string;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
-export default function AutoGrowTextarea({ value, setValue, placeholder }: AutoGrowTextareaProps) {
+export default function AutoGrowTextarea({ value, setValue, placeholder, onKeyDown }: AutoGrowTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export default function AutoGrowTextarea({ value, setValue, placeholder }: AutoG
       ref={textareaRef}
       value={value}
       onChange={(e) => setValue(e.target.value)}
+      onKeyDown={onKeyDown}
       rows={1}
       placeholder={placeholder || "Type here..."}
       className="min-h-[44px] text-sm max-h-32 resize-none bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-400 pt-3 ps-3 rounded-md w-full"

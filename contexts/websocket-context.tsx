@@ -18,7 +18,7 @@ interface WebSocketContextType {
   latestEditSuggestion: ChatMessage | null
   isTyping: boolean
   pendingMessage: string | null
-  sendMessage: (message: string, documentContext?: string | null) => void
+  sendMessage: (type: string, message: string, pdfFiles: any[], documentContext?: string | null) => void
   setPendingMessage: (message: string | null) => void
   acceptEdit: (editId: string) => void
   rejectEdit: (editId: string) => void
@@ -553,12 +553,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
   }, [connect, activeSessionId])
 
-  const sendMessage = useCallback((message: string, documentContext: string | null = null) => {
+  const sendMessage = useCallback((type: string, message: string, pdfFiles: any[], documentContext: string | null = null) => {
     if (socket?.readyState === WebSocket.OPEN && activeSessionId) {
       const payload = {
-        type: 'chat_message',
+        type: type,
         message,
         session_id: activeSessionId,
+        pdf_files: pdfFiles,
         project_id: activeProjectId,
         document_context: documentContext
       }
@@ -621,7 +622,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const requestEdit = useCallback((selectedText: string, documentContext: string) => {
     if (socket?.readyState === WebSocket.OPEN) {
       const message = `Please edit this section: "${selectedText}"`
-      sendMessage(message, documentContext)
+  sendMessage('chat_message', message, [], documentContext)
     }
   }, [socket, sendMessage])
 
@@ -742,7 +743,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (activeSessionId && pendingMessage && connectionStatus === 'connected' && socket?.readyState === WebSocket.OPEN) {
       console.log('[WebSocket] Auto-sending pending message:', pendingMessage)
-      sendMessage(pendingMessage)
+  sendMessage('chat_message', pendingMessage, [], null)
       setPendingMessage(null) // Clear after sending
     }
   }, [activeSessionId, pendingMessage, connectionStatus, socket, sendMessage])
@@ -772,7 +773,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     latestEditSuggestion,
     isTyping,
     pendingMessage,
-    sendMessage,
+  sendMessage,
     setPendingMessage,
     acceptEdit,
     rejectEdit,

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { FileUploadButton } from "@/components/file-upload"
 import { Send, User, Bot, FileText, Loader2, Sparkles, Shuffle, Check, X } from "lucide-react"
 import { useWebSocket } from "@/contexts/websocket-context"
-import AutoGrowTextarea from "./AutoGrowTextarea.tsx"
+import AutoGrowTextarea from "./AutoGrowTextarea"
 
 interface Message {
   id: string
@@ -212,58 +212,64 @@ export const ChatInterface = React.memo(function ChatInterface({
   }, [detectPastedContent])
 
   const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim()) return
+    if (!inputValue.trim()) return;
 
     // Handle welcome mode differently - don't require WebSocket connection
     if (isWelcomeMode) {
-      onNewChat(inputValue)
-      setInputValue("")
-      // Clear uploaded files after sending
-      setUploadedFiles([])
-      return
+      onNewChat(inputValue);
+      setInputValue("");
+      setUploadedFiles([]);
+      return;
     }
 
-    // For chat mode, require WebSocket connection
     if (connectionStatus !== 'connected') {
-      console.warn('Cannot send message: WebSocket not connected')
-      return
+      console.warn('Cannot send message: WebSocket not connected');
+      return;
     }
 
-    // Parse the input to separate document context from user message
-    const inputText = inputValue.trim()
-    const formatted = formatMessageForDisplay(inputText)
-    
-    setInputValue("")
-    // Clear uploaded files after sending
-    setUploadedFiles([])
-    
-    // Check if we have selected text from document to use as context
+    const inputText = inputValue.trim();
+    const formatted = formatMessageForDisplay(inputText);
+
+    // Prepare PDF files if any
+    let pdfFilesToSend: any[] = [];
+    if (uploadedFiles.length > 0) {
+      pdfFilesToSend = uploadedFiles.map(file => ({
+        filename: file.name,
+        content: file.content,
+        size: file.size
+      }));
+    }
+
+    setInputValue("");
+    setUploadedFiles([]);
+
+    // Determine type
+    const type = pdfFilesToSend.length > 0 ? 'pdf_upload' : 'chat_message';
+
+    // Send message with correct type and pdf_files
     if (currentSelectedText && currentSelectedText.trim()) {
-      // Send with selected document text as document_context
-      const contextPreview = typeof currentSelectedText === 'string' ? 
-        (currentSelectedText.length > 100 ? currentSelectedText.substring(0, 100) + '...' : currentSelectedText) : 
-        String(currentSelectedText)
-      
+      const contextPreview = typeof currentSelectedText === 'string' ?
+        (currentSelectedText.length > 100 ? currentSelectedText.substring(0, 100) + '...' : currentSelectedText) :
+        String(currentSelectedText);
       console.log('[ChatInterface] Sending message with document context:', {
         message: inputText,
         document_context: contextPreview,
-        fullContextLength: currentSelectedText.length
-      })
-      sendMessage(inputText, currentSelectedText)
-      // Clear selected text after sending
-      clearSelectedText()
+        fullContextLength: currentSelectedText.length,
+        pdfFilesToSend
+      });
+      sendMessage(type, inputText, pdfFilesToSend, currentSelectedText);
+      clearSelectedText();
     } else if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText) {
-      // Send with document_context and clean message
       console.log('[ChatInterface] Sending edit request:', {
         message: formatted.userRequest,
-        document_context: formatted.pastedText
-      })
-      sendMessage(formatted.userRequest, formatted.pastedText)
+        document_context: formatted.pastedText,
+        pdfFilesToSend
+      });
+      sendMessage(type, formatted.userRequest, pdfFilesToSend, formatted.pastedText);
     } else {
-      // Send regular message
-      sendMessage(inputText)
+      sendMessage(type, inputText, pdfFilesToSend, null);
     }
-  }, [inputValue, isWelcomeMode, onNewChat, connectionStatus, formatMessageForDisplay, sendMessage, currentSelectedText, clearSelectedText])
+  }, [inputValue, isWelcomeMode, onNewChat, connectionStatus, formatMessageForDisplay, sendMessage, currentSelectedText, clearSelectedText, uploadedFiles])
 
   const handleFileUploaded = useCallback((file: UploadedFile) => {
     console.log('File uploaded:', file.name);
@@ -352,32 +358,15 @@ export const ChatInterface = React.memo(function ChatInterface({
             <AutoGrowTextarea
               value={inputValue}
               setValue={setInputValue}
+              onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
             />
 
-            {/* <div className="absolute left-4 sm:left-6 top-4 sm:top-5 flex items-center space-x-2">
-              <div className="hidden sm:flex items-center space-x-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  <span className="hidden md:inline">AI</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <Shuffle className="w-3 h-3 mr-1" />
-                  <span className="hidden md:inline">Random</span>
-                </Button>
-              </div>
-              <div className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-xs px-3 py-1.5 rounded-full flex items-center space-x-1.5 shadow-lg">
-                <span>🌙</span>
-                <span className="font-medium">Cosmic Night</span>
-              </div>
-            </div> */}
+          
 
             <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2">
               <Button
@@ -468,30 +457,38 @@ export const ChatInterface = React.memo(function ChatInterface({
                     {/* Cursor AI style display for user messages with pasted content */}
                     {message.type === "user" && (() => {
                       const formatted = formatMessageForDisplay(message.content)
-                      if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText && formatted.preview) {
-                        return (
-                          <div className="space-y-2">
-                            {/* User's request */}
-                            <p className="text-sm font-medium">{formatted.userRequest}</p>
-                            
-                            {/* Pasted content preview - Cursor style */}
-                            <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                <span className="text-xs font-medium text-blue-200">SELECTED TEXT</span>
-                              </div>
-                              <p className="text-xs text-gray-300 font-mono">
-                                {formatted.preview}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                {formatted.pastedText.length} characters
-                              </p>
+                      const isFileUploadRequest = message.content?.toLowerCase().includes("upload")
+                      return (
+                        <>
+                          {isFileUploadRequest && (
+                            <div className="bg-[#18181b] border border-[#232326] rounded-lg px-4 py-3 flex items-center space-x-3 mb-2">
+                              <span className="text-2xl">📄</span>
+                              <span className="text-sm text-gray-200 font-medium">Uploaded 1 PDF file</span>
                             </div>
-                          </div>
-                        )
-                      } else {
-                        return <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-                      }
+                          )}
+                          {formatted.isPastedContent && formatted.userRequest && formatted.pastedText && formatted.preview ? (
+                            <div className="space-y-2">
+                              {/* User's request */}
+                              <p className="text-sm font-medium">{formatted.userRequest}</p>
+                              {/* Pasted content preview - Cursor style */}
+                              <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                  <span className="text-xs font-medium text-blue-200">SELECTED TEXT</span>
+                                </div>
+                                <p className="text-xs text-gray-300 font-mono">
+                                  {formatted.preview}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {formatted.pastedText.length} characters
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                          )}
+                        </>
+                      )
                     })()}
                     
                     {/* Regular content for non-user messages */}
