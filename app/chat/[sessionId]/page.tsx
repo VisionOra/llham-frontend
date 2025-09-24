@@ -404,7 +404,7 @@ function ChatPageContent() {
                   (activeTab === 'chat' ? 'block' : 'hidden') +
                   ' md:block md:border-l md:border-[#2a2a2a]'
                 }
-                style={{ width: typeof window !== 'undefined' && window.innerWidth < 768 ? `calc(100vw - ${sidebarWidth}px)` : `${chatWidth}px` }}
+                style={{ width: typeof window !== 'undefined' && window.innerWidth < 850 ? `calc(100vw - ${sidebarWidth}px)` : `${chatWidth}px` }}
               >
                 {/* Resize Handle (desktop only) */}
                 <div

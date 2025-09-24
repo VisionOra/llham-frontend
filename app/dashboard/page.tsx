@@ -74,14 +74,14 @@ function DashboardContent() {
           <div className="w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
-      <div className="max-w-2xl w-full mx-auto text-center space-y-8 p-8 rounded-2xl shadow-2xl bg-[#18181b]/90 border border-[#23232a] backdrop-blur-md">
+      <div className="max-w-2xl w-full mx-auto text-center space-y-2 p-8">
         <h1 className="text-4xl font-extrabold text-white drop-shadow-lg">What do you want to create?</h1>
-        <p className="text-lg text-gray-400 mb-2">Start building with a single prompt. No coding needed.</p>
-        <div className="flex items-center justify-center mb-6">
+        <p className="text-lg text-gray-400 mb-4">Start building with a single prompt. No coding needed.</p>
+        {/* <div className="flex items-center justify-center mb-6">
           <span className="inline-block px-4 py-1.5 rounded-full bg-gradient-to-r from-green-600 via-blue-700 to-green-700 text-white text-xs font-semibold shadow-lg border border-green-700/60 drop-shadow-[0_0_8px_rgba(34,197,94,0.4)] animate-pulse">
             <span className="mr-1">✨</span>AI-powered project creation
           </span>
-        </div>
+        </div> */}
         <div className="w-full max-w-xl mx-auto">
           <ChatInterface
             sessionId={null}

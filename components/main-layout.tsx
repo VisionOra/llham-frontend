@@ -63,12 +63,19 @@ function MainLayoutContent({ children }: MainLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-white">
-      {/* Persistent Sidebar */}
+    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden">
+      {/* Sidebar: fixed/overlap on mobile/tab, static on desktop */}
       <div
-        className={`transition-all duration-200 bg-[#0a0a0a] border-r border-[#2a2a2a] flex-shrink-0`}
-        style={{ width: sidebarCollapsed ? 64 : 256, minWidth: sidebarCollapsed ? 64 : 256 }}
+        className={`transition-all duration-200 bg-[#0a0a0a] border-r border-[#2a2a2a] flex-shrink-0 hidden md:flex flex-col relative`}
+        style={{
+          width: sidebarCollapsed ? 64 : 256,
+          minWidth: sidebarCollapsed ? 64 : 256,
+          maxWidth: sidebarCollapsed ? 64 : 256,
+          height: '100vh',
+        }}
       >
+        {/* Collapse/Expand button for desktop */}
+     
         <ChatSidebar 
           user={user || undefined}
           onBackToDashboard={handleBackToDashboard}
@@ -76,19 +83,63 @@ function MainLayoutContent({ children }: MainLayoutProps) {
           onProjectSelect={handleProjectSelect}
           onNewProject={handleNewProject}
           showProjects={showProjects}
-          // Pass collapsed state and setter to sidebar
           collapsed={sidebarCollapsed}
           setCollapsed={setSidebarCollapsed}
         />
       </div>
-
+      {/* Sidebar open button for mobile/tab only */}
+      {sidebarCollapsed && (
+        <button
+          className="fixed top-4 left-4 z-40 md:hidden bg-[#18181b] border border-[#23232a] rounded-full p-3 shadow-lg hover:bg-[#23232a] transition-colors"
+          aria-label="Open sidebar"
+          onClick={() => setSidebarCollapsed(false)}
+        >
+          {/* Hamburger icon */}
+          <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="18" x2="20" y2="18" />
+          </svg>
+        </button>
+      )}
+      {/* Only render sidebar on mobile/tab if not collapsed, so it appears when expanded */}
+      {!sidebarCollapsed && (
+        <div
+          className="block md:hidden fixed top-0 left-0 h-screen w-[256px] z-50 transition-transform duration-200 translate-x-0"
+          style={{ pointerEvents: 'auto' }}
+        >
+          <ChatSidebar 
+            user={user || undefined}
+            onBackToDashboard={handleBackToDashboard}
+            onLogout={handleLogout}
+            onProjectSelect={handleProjectSelect}
+            onNewProject={handleNewProject}
+            showProjects={showProjects}
+            collapsed={sidebarCollapsed}
+            setCollapsed={setSidebarCollapsed}
+          />
+        </div>
+      )}
       {/* Main Content with Smooth Transitions */}
-      <div className="flex-1 relative overflow-hidden">
-        <div 
+      <div
+        className="relative overflow-x-auto h-full"
+        style={{
+          flex: 1,
+          marginLeft: 0,
+          width: '100%',
+          minWidth: 0,
+        }}
+      >
+        <div
           key={pathname}
           className={`absolute inset-0 transition-all duration-300 ease-in-out ${
             isTransitioning ? 'opacity-100 translate-x-0 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'
           }`}
+          style={{
+            left: 0,
+            width: '100%',
+            marginLeft: 0,
+          }}
         >
           {children}
         </div>
