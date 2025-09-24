@@ -15,6 +15,7 @@ function MainLayoutContent({ children }: MainLayoutProps) {
   const pathname = usePathname()
   const { user, logout } = useAuth()
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
   const handleBackToDashboard = () => {
     setIsTransitioning(true)
@@ -64,7 +65,10 @@ function MainLayoutContent({ children }: MainLayoutProps) {
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white">
       {/* Persistent Sidebar */}
-      <div className="w-64 bg-[#0a0a0a] border-r border-[#2a2a2a] flex-shrink-0">
+      <div
+        className={`transition-all duration-200 bg-[#0a0a0a] border-r border-[#2a2a2a] flex-shrink-0`}
+        style={{ width: sidebarCollapsed ? 64 : 256, minWidth: sidebarCollapsed ? 64 : 256 }}
+      >
         <ChatSidebar 
           user={user || undefined}
           onBackToDashboard={handleBackToDashboard}
@@ -72,11 +76,14 @@ function MainLayoutContent({ children }: MainLayoutProps) {
           onProjectSelect={handleProjectSelect}
           onNewProject={handleNewProject}
           showProjects={showProjects}
+          // Pass collapsed state and setter to sidebar
+          collapsed={sidebarCollapsed}
+          setCollapsed={setSidebarCollapsed}
         />
       </div>
 
       {/* Main Content with Smooth Transitions */}
-      <div className="flex-1 relative overflow-hidden ">
+      <div className="flex-1 relative overflow-hidden">
         <div 
           key={pathname}
           className={`absolute inset-0 transition-all duration-300 ease-in-out ${

@@ -457,7 +457,7 @@ export const ChatInterface = React.memo(function ChatInterface({
                     {/* Cursor AI style display for user messages with pasted content */}
                     {message.type === "user" && (() => {
                       const formatted = formatMessageForDisplay(message.content)
-                      const isFileUploadRequest = message.content?.toLowerCase().includes("upload")
+                      const isFileUploadRequest = message.content?.toLowerCase().includes("uploaded an attachment")
                       return (
                         <>
                           {isFileUploadRequest && (
