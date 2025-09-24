@@ -42,7 +42,7 @@ interface DocumentViewerProps {
 
 export function DocumentViewer({ document, onTextSelect, editSuggestion, onAcceptEdit, onRejectEdit }: DocumentViewerProps) {
   const [selectedText, setSelectedText] = useState("")
-  const [zoomLevel, setZoomLevel] = useState(80)
+  const [zoomLevel, setZoomLevel] = useState(100)
   const [isSelecting, setIsSelecting] = useState(false)
   const [copied, setCopied] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -96,7 +96,9 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
     }
     
     return contentString || ''
+
   })()
+    console.log("[DocumentViewer] Processed content:", { processedContent })
 
   useEffect(() => {
     console.log("[DocumentViewer] Received document:", {
@@ -280,7 +282,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
 
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a] w-full">
+    <div className="flex flex-col h-full bg-[#0a0a0a] w-full ">
       {/* Header - Responsive: column on mobile, row on md+ */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between p-4 border-b border-[#2a2a2a] gap-4 md:gap-0">
         {/* Title and meta */}
@@ -339,7 +341,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
       </div>
 
       {/* Document Metadata */}
-      <div className="px-4 py-2 bg-[#1a1a1a]/50 border-b border-[#2a2a2a]/50">
+      <div className="px-4 py-2 bg-[#1a1a1a]/50 border-b border-[#2a2a2a]/50 min-w-[430px]">
         <div className="flex items-center justify-between text-xs text-gray-400">
           <div className="flex items-center space-x-4">
             <span>Created: {formatDate(document.created_at)}</span>
@@ -362,16 +364,20 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
 
       {/* Document Content */}
       <ScrollArea className="flex-1">
-        <div className="p-8">
+        <div className="p-0 sm:p-0 md:p-8">
           <div
             ref={contentRef}
-            className="max-w-5xl mx-auto bg-white text-black rounded-lg shadow-2xl p-12 min-h-[800px] document-content"
+            className="bg-white  text-black rounded-lg shadow-2xl min-h-[800px] document-content w-full p-2 sm:p-4 md:p-12 md:max-w-3xl md:mx-auto"
             style={{
               fontSize: `${zoomLevel}%`,
               userSelect: "text",
               cursor: "text",
               lineHeight: "1.8",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif",
+              boxSizing: "border-box",
+              overflowX: "auto",
+              minWidth: 0,
+              maxWidth: "100%"
             }}
             dangerouslySetInnerHTML={{ __html: processedContent }}
           />

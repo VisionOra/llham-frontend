@@ -725,7 +725,7 @@ export const ChatInterface = React.memo(function ChatInterface({
             <Button
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || connectionStatus !== 'connected' || isGeneratingProposal}
-              className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50 flex items-center justify-center sm:h-[45px] h-10 sm:min-w-[45px] min-w-[38px] rounded-md p-0 sm:p-0"
+              className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50 flex items-center justify-center sm:h-[45px] h-10 sm:min-w-[45px] min-w-[38px] rounded-md p-0 sm:p-0 px-2 py-2"
               style={{ height: undefined, minWidth: undefined }}
             >
               {(connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

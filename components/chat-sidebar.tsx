@@ -146,8 +146,13 @@ export const ChatSidebar = React.memo(function ChatSidebar({
 
   return (
     <div
-      className={`bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col h-full transition-all duration-200 ${collapsed ? 'w-[64px] min-w-[64px]' : 'w-[256px] min-w-[256px]'} relative`}
-      style={{ zIndex: 20 }}
+      className={`bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col h-full transition-all duration-200 ${collapsed ? 'w-[64px] min-w-[64px]' : 'w-[256px] min-w-[256px]'} relative md:relative z-20
+        ${!collapsed ? 'fixed top-0 left-0 h-screen max-h-screen md:static md:h-full md:max-h-full' : ''}
+        ${!collapsed ? 'shadow-2xl' : ''}
+        ${!collapsed ? 'md:shadow-none' : ''}
+        ${!collapsed ? 'md:relative' : ''}
+      `}
+      style={{ zIndex: !collapsed ? 50 : 20 }}
       onMouseEnter={() => setSidebarHovered(true)}
       onMouseLeave={() => setSidebarHovered(false)}
     >

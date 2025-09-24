@@ -1,3 +1,9 @@
+.document-content h1:empty,
+.document-content h2:empty,
+.document-content h3:empty,
+.document-content h4:empty {
+  display: none !important;
+}
 @import "../styles/sidebar-scrollbar.css";
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -121,7 +127,87 @@
   body {
     @apply bg-background text-foreground;
   }
+  .document-content {
+    font-size: clamp(0.98rem, 2vw, 1.15rem);
+    line-height: 1.8;
+    color: #2d3748;
+    box-sizing: border-box;
+    padding: 1rem;
+    overflow-x: hidden;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    overflow: auto;
+  }
+
+  .document-content h1, .document-content h2, .document-content h3, .document-content h4 {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.75em 1em;
+    margin-top: 2em;
+    margin-bottom: 1em;
+    line-height: 1.4;
+    background: #f8fafc;
+  }
+  
+  .document-content h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a202c;
+    text-align: center;
+  }
+  
+  .document-content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2d3748;
+  }
+  .document-content h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #2d3748;
+  }
+  .document-content h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #4a5568;
+  }
+
+
 }
+
+.document-content p {
+  margin-top: 1em;
+  margin-bottom: 1em;
+      padding: 0.75em 1em;
+
+}
+.document-content ul{
+  margin-top: 1em;
+  margin-bottom: 1em;
+      padding: 0.75em 1em;
+      margin-left: 2em;
+}
+
+.document-content ol{
+  margin-top: 1em;
+  margin-bottom: 1em;
+      padding: 0.75em 1em;
+}
+.document-content li {
+  list-style-type: disc;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+      padding: 0.25em 0.5em;  }
+
+  .document-content tr{
+    margin-top: 1em;
+    margin-bottom: 1em;
+        padding: 0.75em 1em;
+  }
 
 /* Added custom scrollbar styles matching v0.dev dark theme */
 ::-webkit-scrollbar {
@@ -160,271 +246,3 @@
   -webkit-line-clamp: 2;
 }
 
-/* Document content styling for better readability */
-.document-content {
-  /* Typography improvements */
-  font-size: 16px;
-  line-height: 1.8;
-  color: #2d3748;
-  
-  /* Improve text selection behavior - make each element selectable independently */
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-  user-select: text;
-  
-  /* Prevent text selection issues */
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* Make each element independently selectable */
-.document-content p,
-.document-content li,
-.document-content h1,
-.document-content h2,
-.document-content h3,
-.document-content h4,
-.document-content td,
-.document-content th,
-.document-content span,
-.document-content div {
-  /* Each element should be selectable independently */
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-  user-select: text;
-  
-  /* Prevent selection from extending beyond element boundaries */
-  contain: style;
-}
-
-/* Improve selection highlighting */
-.document-content ::selection {
-  background: #3182ce;
-  color: white;
-}
-
-.document-content ::-moz-selection {
-  background: #3182ce;
-  color: white;
-}
-
-/* Prevent selection on headings and titles from extending beyond intended */
-.document-content h1, 
-.document-content h2, 
-.document-content h3, 
-.document-content h4 {
-  display: block;
-  position: relative;
-}
-
-/* Ensure list items are selectable independently */
-.document-content li {
-  display: list-item;
-  position: relative;
-}
-
-/* Make selectable text spans independent */
-.document-content .selectable-text {
-  display: inline;
-  position: relative;
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-  user-select: text;
-}
-
-.document-content h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: #1a202c;
-  margin: 2rem 0 1.5rem 0;
-  padding-bottom: 1rem;
-  border-bottom: 3px solid #4299e1;
-  text-align: center;
-}
-
-.document-content h2 {
-  font-size: 1.875rem;
-  font-weight: 600;
-  color: #2d3748;
-  margin: 2.5rem 0 1rem 0;
-  padding: 1rem 0 0.5rem 1.5rem;
-  border-left: 5px solid #4299e1;
-  background: linear-gradient(90deg, #ebf8ff 0%, transparent 100%);
-}
-
-.document-content h3 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #2d3748;
-  margin: 2rem 0 1rem 0;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #e2e8f0;
-}
-
-.document-content h4 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #4a5568;
-  margin: 1.5rem 0 0.75rem 0;
-}
-
-.document-content p {
-  margin: 1rem 0;
-  text-align: justify;
-  color: #4a5568;
-}
-
-.document-content strong {
-  color: #2d3748;
-  font-weight: 600;
-}
-
-.document-content em {
-  color: #718096;
-  font-style: italic;
-}
-
-/* Table styling improvements */
-.document-content table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 2rem 0;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.document-content th {
-  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-  color: white;
-  font-weight: 600;
-  padding: 1rem;
-  text-align: left;
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.document-content td {
-  padding: 1rem;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: top;
-}
-
-.document-content tr:nth-child(even) {
-  background-color: #f7fafc;
-}
-
-.document-content tr:hover {
-  background-color: #edf2f7;
-}
-
-/* List styling improvements */
-.document-content ul, .document-content ol {
-  margin: 1rem 0;
-  padding-left: 2rem;
-}
-
-.document-content li {
-  margin: 0.75rem 0;
-  line-height: 1.7;
-  color: #4a5568;
-}
-
-.document-content ul li {
-  list-style-type: none;
-  position: relative;
-}
-
-.document-content ul li::before {
-  content: "•";
-  color: #4299e1;
-  font-weight: bold;
-  position: absolute;
-  left: -1.5rem;
-  font-size: 1.2rem;
-}
-
-/* Section styling */
-.document-content section {
-  margin: 3rem 0;
-  padding: 2rem;
-  background: #f8fafc;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-}
-
-.document-content section:first-child {
-  margin-top: 1rem;
-}
-
-/* Links styling */
-.document-content a {
-  color: #4299e1;
-  text-decoration: none;
-  font-weight: 500;
-  border-bottom: 1px solid transparent;
-  transition: all 0.2s ease;
-}
-
-.document-content a:hover {
-  color: #3182ce;
-  border-bottom-color: #3182ce;
-}
-
-/* Blockquote styling */
-.document-content blockquote {
-  border-left: 4px solid #4299e1;
-  background: #ebf8ff;
-  padding: 1.5rem;
-  margin: 2rem 0;
-  font-style: italic;
-  color: #2d3748;
-  border-radius: 0 8px 8px 0;
-}
-
-/* Code and pre styling */
-.document-content code {
-  background: #edf2f7;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 0.875rem;
-  color: #e53e3e;
-}
-
-.document-content pre {
-  background: #2d3748;
-  color: #e2e8f0;
-  padding: 1.5rem;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 1.5rem 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-}
-
-/* Responsive improvements */
-@media (max-width: 768px) {
-  .document-content {
-    padding: 1.5rem;
-  }
-  
-  .document-content h1 {
-    font-size: 2rem;
-  }
-  
-  .document-content h2 {
-    font-size: 1.5rem;
-  }
-  
-  .document-content table {
-    font-size: 0.875rem;
-  }
-  
-  .document-content th, .document-content td {
-    padding: 0.75rem;
-  }
-}
