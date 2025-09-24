@@ -12,6 +12,8 @@ import { getDocumentContent } from "@/lib/api"
 
 
 function ChatPageContent() {
+  // Tab state for md/mobile
+  const [activeTab, setActiveTab] = useState<'document' | 'chat'>('document')
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -353,18 +355,41 @@ function ChatPageContent() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex h-full min-h-0">
-        {(() => {
-          console.log('[Chat] Layout render check:', { hasDocument, currentDocument: !!currentDocument })
-          return hasDocument && currentDocument ? (
+      <div className="flex-1 flex flex-col h-full min-h-0">
+        {/* Tabs: only show on md and below, and only if document exists, and always at the top */}
+        {hasDocument && currentDocument && (
+          <div className="md:hidden w-full bg-[#18181b] border-b border-[#23232a] flex z-20">
+            <button
+              className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === 'document' ? 'bg-[#23232a] text-blue-400' : 'text-gray-300'}`}
+              onClick={() => setActiveTab('document')}
+            >
+              Document
+            </button>
+            <button
+              className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === 'chat' ? 'bg-[#23232a] text-green-400' : 'text-gray-300'}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              Chat
+            </button>
+          </div>
+        )}
+
+        {/* Responsive content: tabs on md/mobile, split on desktop */}
+        <div className="flex-1 flex h-full min-h-0">
+          {/* Desktop: split view, md/mobile: tab view */}
+          {hasDocument && currentDocument ? (
             <>
-              {/* Document Viewer - Calculated Width */}
-              <div 
-                className="min-h-0"
-                style={{ width: documentWidth }}
+              {/* Document Panel */}
+              <div
+                className={
+                  `min-h-0 ` +
+                  (activeTab === 'document' ? 'block' : 'hidden') +
+                  ' md:block md:min-w-[0] md:w-auto md:flex-1'
+                }
+                style={{ width: typeof window !== 'undefined' && window.innerWidth < 860 ? `calc(100vw - ${sidebarWidth}px)` : documentWidth }}
               >
-                <DocumentViewer 
-                  document={currentDocument} 
+                <DocumentViewer
+                  document={currentDocument}
                   onTextSelect={handleTextSelect}
                   editSuggestion={latestEditSuggestion || undefined}
                   onAcceptEdit={acceptEdit}
@@ -372,28 +397,32 @@ function ChatPageContent() {
                 />
               </div>
 
-              {/* Chat - Right Sidebar with Resize Handle */}
-              <div 
-                className="border-l border-[#2a2a2a] flex flex-col h-full min-h-0 relative"
-                style={{ width: `${chatWidth}px` }}
+              {/* Chat Panel */}
+              <div
+                className={
+                  `flex flex-col h-full min-h-0 relative ` +
+                  (activeTab === 'chat' ? 'block' : 'hidden') +
+                  ' md:block md:border-l md:border-[#2a2a2a]'
+                }
+                style={{ width: typeof window !== 'undefined' && window.innerWidth < 768 ? `calc(100vw - ${sidebarWidth}px)` : `${chatWidth}px` }}
               >
-                {/* Resize Handle */}
+                {/* Resize Handle (desktop only) */}
                 <div
-                  className={`absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize z-50 transition-all duration-200 ${
+                  className={`absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize z-50 transition-all duration-200 hidden md:block ${
                     isResizing ? 'bg-blue-500 w-2' : 'hover:bg-blue-500/60 hover:w-2'
                   }`}
                   onMouseDown={handleResizeStart}
                   title="Drag to resize chat panel"
                 />
-                
-                {/* Resize Indicator */}
+
+                {/* Resize Indicator (desktop only) */}
                 {isResizing && (
-                  <div className="absolute top-4 left-4 bg-black/80 text-white text-sm px-3 py-2 rounded z-50">
+                  <div className="absolute top-4 left-4 bg-black/80 text-white text-sm px-3 py-2 rounded z-50 hidden md:block">
                     <div>Chat: {Math.round(chatWidth)}px</div>
                     <div>Document: Auto</div>
                   </div>
                 )}
-                
+
                 <ChatInterface
                   sessionId={sessionId}
                   projectId={projectId}
@@ -408,7 +437,7 @@ function ChatPageContent() {
               </div>
             </>
           ) : (
-            /* Chat - Full Center */
+            // Chat only (no document)
             <div className="flex-1">
               {loadingDocument ? (
                 <div className="flex items-center justify-center h-full">
@@ -427,8 +456,8 @@ function ChatPageContent() {
                 />
               )}
             </div>
-          )
-        })()}
+          )}
+        </div>
       </div>
     </div>
   )

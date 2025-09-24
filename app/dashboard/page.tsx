@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { createProjectWithSession, type CreateProjectWithSessionRequest } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
 
+
 function DashboardContent() {
   const router = useRouter()
   const { user, isAuthenticated } = useAuth()
@@ -21,7 +22,8 @@ function DashboardContent() {
     sendMessage,
     setPendingMessage
   } = useWebSocket()
-  
+
+  const [showLoader, setShowLoader] = useState(false)
   const cleanupDoneRef = useRef(false)
 
   useEffect(() => {
@@ -30,13 +32,14 @@ function DashboardContent() {
       cleanupDoneRef.current = true
       // Cleanup logic here if needed
     }
-    
-  if (isAuthenticated && Array.isArray(projects) && projects.length > 0 && !cleanupDoneRef.current) {
+
+    if (isAuthenticated && Array.isArray(projects) && projects.length > 0 && !cleanupDoneRef.current) {
       cleanupEmptyProjects()
     }
   }, [projects, isAuthenticated])
 
   const handleNewChat = async (message: string) => {
+    setShowLoader(true)
     try {
       setPendingMessage(message)
       const projectTitle = message.length > 50 ? message.substring(0, 47) + "..." : message
@@ -57,12 +60,20 @@ function DashboardContent() {
     } catch (error) {
       console.error("[Dashboard] Failed to create project with session:", error)
       setPendingMessage(null) // Clear pending message on error
+    } finally {
+      setShowLoader(false)
     }
   }
 
 
   return (
     <div className="flex-1 flex items-center justify-center min-h-screen bg-[#0a0a0a]">
+      {/* Loader overlay */}
+      {showLoader && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60">
+          <div className="w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
       <div className="max-w-2xl w-full mx-auto text-center space-y-8 p-8 rounded-2xl shadow-2xl bg-[#18181b]/90 border border-[#23232a] backdrop-blur-md">
         <h1 className="text-4xl font-extrabold text-white drop-shadow-lg">What do you want to create?</h1>
         <p className="text-lg text-gray-400 mb-2">Start building with a single prompt. No coding needed.</p>

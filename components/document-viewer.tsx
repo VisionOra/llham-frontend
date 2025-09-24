@@ -179,7 +179,27 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   }, [document])
 
   const handlePrint = () => {
-    window.print()
+    if (!document) return;
+    // Create a new window and print only the document content
+    const printWindow = window.open('', '_blank', 'width=900,height=1200')
+    if (!printWindow) return;
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>${document.title}</title><style>
+      body { font-family: Arial, sans-serif; background: #fff; color: #000; padding: 32px; width: 100%; max-width: 900px; margin: 0 auto; }
+      h1 { color:#333;margin-top:20px;font-size:2.2em;font-weight:bold;border-bottom:2px solid #4a5568;padding-bottom:8px; }
+      .meta { color:#666;font-size:12px;margin-bottom:16px; }
+      .content { font-size:14px;line-height:1.8;color:#000; }
+    </style></head><body>
+      <h1>${document.title}</h1>
+      <div class="meta">
+        ${document.author ? `<div><strong>Author:</strong> ${document.author}</div>` : ''}
+        ${document.created_at ? `<div><strong>Created:</strong> ${formatDate(document.created_at)}</div>` : ''}
+        ${document.updated_at ? `<div><strong>Last Updated:</strong> ${formatDate(document.updated_at)}</div>` : ''}
+      </div>
+      <div class="content">${processedContent}</div>
+    </body></html>`)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => printWindow.print(), 200)
   }
 
   const handleZoomIn = () => {
@@ -258,11 +278,13 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
     )
   }
 
+
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a] w-full">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-[#2a2a2a]">
-        <div className="flex items-center space-x-3">
+      {/* Header - Responsive: column on mobile, row on md+ */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between p-4 border-b border-[#2a2a2a] gap-4 md:gap-0">
+        {/* Title and meta */}
+        <div className="flex items-center space-x-3 md:space-x-3">
           <FileText className="w-5 h-5 text-green-400" />
           <div>
             <h2 className="text-lg font-semibold text-white break-words max-w-xs sm:max-w-md whitespace-normal">{document.title}</h2>
@@ -270,9 +292,29 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        {/* Action Buttons - stack at bottom on mobile, right on md+ */}
+        <div className="flex flex-col-reverse md:flex-row md:items-center md:space-x-2 gap-2 md:gap-0 w-full md:w-auto">
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-2 justify-end md:justify-start w-full md:w-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrint}
+              className="border-[#2a2a2a] hover:text-white cursor-pointer text-gray-300 hover:bg-[#1a1a1a] bg-transparent"
+            >
+              <Printer className="w-4 h-4 mr-1" />
+              Print
+            </Button>
+            <PdfExporter
+              document={document}
+              processedContent={processedContent}
+              variant="outline"
+              size="sm"
+              className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a] bg-transparent"
+            />
+          </div>
           {/* Zoom Controls */}
-          <div className="flex items-center space-x-1 bg-[#1a1a1a] rounded-lg p-1">
+          <div className="flex items-center space-x-1 bg-[#1a1a1a] rounded-lg p-1 justify-center md:justify-start w-full md:w-auto mt-2 md:mt-0 mb-0 md:mb-0">
             <Button
               variant="ghost"
               size="sm"
@@ -293,25 +335,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
               <ZoomIn className="w-4 h-4" />
             </Button>
           </div>
-
-          {/* Action Buttons */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePrint}
-            className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a] bg-transparent"
-          >
-            <Printer className="w-4 h-4 mr-1" />
-            Print
-          </Button>
-
-          <PdfExporter
-            document={document}
-            processedContent={processedContent}
-            variant="outline"
-            size="sm"
-            className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a] bg-transparent"
-          />
         </div>
       </div>
 
