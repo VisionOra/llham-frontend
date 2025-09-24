@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Download } from "lucide-react"
 
+
 interface Document {
   id?: string
   title: string
@@ -30,56 +31,89 @@ export function PdfExporter({
 }: PdfExporterProps) {
   const [isExporting, setIsExporting] = useState(false)
 
-  const handleExportHTML = async () => {
-    if (!document || isExporting) return
-    setIsExporting(true)
-    
-    try {
-      console.log('[PdfExporter] Exporting as HTML file...')
-      
-      // Create complete HTML document
-      const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${document.title}</title>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            line-height: 1.6; 
-            color: #000; 
-            background: #fff;
-            margin: 20px;
-            max-width: 800px;
-        }
-        h1, h2, h3, h4, h5, h6 { color: #333; margin-top: 20px; }
-        p { margin-bottom: 15px; }
-        ul, ol { margin: 15px 0; padding-left: 30px; }
-        li { margin-bottom: 5px; }
-    </style>
-</head>
-<body>
-    <h1>${document.title}</h1>
-    ${processedContent}
-</body>
-</html>`
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "Unknown"
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
 
-      const blob = new Blob([htmlContent], { type: "text/html" })
-      const url = URL.createObjectURL(blob)
-      const a = window.document.createElement("a")
-      a.href = url
-      a.download = `${document.title.replace(/[^a-zA-Z0-9]/g, "_")}.html`
-      a.click()
-      URL.revokeObjectURL(url)
-      
-      console.log('[PdfExporter] HTML file downloaded successfully')
-      
+  const handleExportPDF = async () => {
+    if (!document || isExporting) return;
+    setIsExporting(true);
+    try {
+          const jsPDFModule = await import("jspdf");
+          const pdf = new jsPDFModule.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      // Create a temporary div with your HTML and styles
+      const tempDiv = window.document.createElement('div');
+      tempDiv.style.position = 'fixed';
+      tempDiv.style.left = '-10000px';
+      tempDiv.style.top = '0';
+      tempDiv.style.background = '#fff';
+      tempDiv.style.color = '#000';
+      tempDiv.style.padding = '32px';
+      tempDiv.style.width = '1122px'; // A4 at 144dpi
+      tempDiv.style.fontFamily = 'Arial, sans-serif';
+      tempDiv.style.zIndex = '9999';
+      tempDiv.innerHTML = `
+        <h1 style="color:#333;margin-top:20px;font-size:2.2em;font-weight:bold;border-bottom:2px solid #4a5568;padding-bottom:8px;">${document.title}</h1>
+        <div style="color:#666;font-size:12px;margin-bottom:16px;">
+          ${document.author ? `<div><strong>Author:</strong> ${document.author}</div>` : ''}
+          ${document.created_at ? `<div><strong>Created:</strong> ${formatDate(document.created_at)}</div>` : ''}
+          ${document.updated_at ? `<div><strong>Last Updated:</strong> ${formatDate(document.updated_at)}</div>` : ''}
+        </div>
+        <div style="font-size:14px;line-height:1.8;color:#000;">${processedContent}</div>
+      `;
+      window.document.body.appendChild(tempDiv);
+      await pdf.html(tempDiv, {
+        callback: function (doc) {
+          doc.save(`${document.title ? document.title.replace(/[^a-zA-Z0-9]/g, "_") : "download"}.pdf`);
+          window.document.body.removeChild(tempDiv);
+          setIsExporting(false);
+        },
+        margin: [10, 10, 10, 10],
+        autoPaging: 'text',
+        x: 0,
+        y: 0,
+        width: 180, // mm (A4 width)
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              backgroundColor: '#fff',
+              windowWidth: 1122
+            }
+      });
     } catch (error) {
-      console.error('Error exporting HTML:', error)
-      alert(`HTML export failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`)
+      console.error('Text-based PDF export failed:', error);
+      // Fallback: Download as HTML file
+      try {
+        const htmlContent = `<!DOCTYPE html><html><head><meta charset='UTF-8'><title>${document.title}</title></head><body style='font-family: Arial, sans-serif; background: #fff; color: #000; padding: 32px; width: 100%; max-width: 900px; margin: 0 auto;'>
+          <h1 style="color:#333;margin-top:20px;font-size:2.2em;font-weight:bold;border-bottom:2px solid #4a5568;padding-bottom:8px;">${document.title}</h1>
+          <div style="color:#666;font-size:12px;margin-bottom:16px;">
+            ${document.author ? `<div><strong>Author:</strong> ${document.author}</div>` : ''}
+            ${document.created_at ? `<div><strong>Created:</strong> ${formatDate(document.created_at)}</div>` : ''}
+            ${document.updated_at ? `<div><strong>Last Updated:</strong> ${formatDate(document.updated_at)}</div>` : ''}
+          </div>
+          <div style="font-size:14px;line-height:1.8;color:#000;">${processedContent}</div>
+        </body></html>`;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = window.document.createElement('a');
+        a.href = url;
+        a.download = `${document.title ? document.title.replace(/[^a-zA-Z0-9]/g, "_") : "download"}.html`;
+        window.document.body.appendChild(a);
+        a.click();
+        window.document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (htmlError) {
+        alert('PDF and HTML export both failed.');
+      }
     } finally {
-      setIsExporting(false)
+      setIsExporting(false);
     }
   }
 
@@ -87,12 +121,12 @@ export function PdfExporter({
     <Button
       variant={variant}
       size={size}
-      onClick={handleExportHTML}
+      onClick={handleExportPDF}
       disabled={!document || isExporting}
       className={className}
     >
-      <Download className="w-4 h-4 mr-1 text-white hover:text-white" />
-      {isExporting ? "Exporting..." : "Export HTML"}
+      <Download className="w-4 h-4 mr-1" />
+      {isExporting ? "Exporting..." : "Export Html"}
     </Button>
   )
 }

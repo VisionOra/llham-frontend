@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { useWebSocket } from "@/contexts/websocket-context"
 import { getDocumentContent } from "@/lib/api"
 
+
 function ChatPageContent() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -31,19 +32,22 @@ function ChatPageContent() {
   // Chat panel resize state
   const [chatWidth, setChatWidth] = useState(350) // Chat width in pixels
   const [isResizing, setIsResizing] = useState(false)
-  
-  // Calculate document width: total width - sidebar (250px) - chat width
-  const sidebarWidth = 256 // Fixed sidebar width
+
+  // Sidebar collapsed state and width
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const sidebarWidth = sidebarCollapsed ? 64 : 256
+
+  // Calculate document width: total width - sidebar - chat width
   const documentWidth = `calc(100vw - ${sidebarWidth}px - ${chatWidth}px)`
 
   // Local state for document management (like in old code)
   const [hasDocument, setHasDocument] = useState(false)
   const [currentDocument, setCurrentDocument] = useState<any>(null)
   const [loadingDocument, setLoadingDocument] = useState(false)
-  
+
   // State for text selection
   const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
-  
+
   // Track loaded sessions to prevent recursive calls
   const loadedSessionsRef = useRef<Set<string>>(new Set())
 
@@ -51,7 +55,7 @@ function ChatPageContent() {
   const sessionIdParam = params.sessionId
   const sessionId = sessionIdParam === 'new' ? null : 
                    Array.isArray(sessionIdParam) ? sessionIdParam[0] : sessionIdParam
-  
+
   // Extract projectId from search params
   const projectId = searchParams.get('project')
 
@@ -59,11 +63,11 @@ function ChatPageContent() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return
-      
+
       e.preventDefault()
       const viewportWidth = window.innerWidth
       const mouseX = e.clientX
-      
+
       // Calculate new chat width (min 250px, max 50% of viewport)
       const newWidth = Math.min(viewportWidth * 0.5, Math.max(250, viewportWidth - mouseX))
       setChatWidth(newWidth)
@@ -344,6 +348,8 @@ function ChatPageContent() {
         showProjects={true}
         onProjectSelect={handleProjectSelect}
         onNewProject={handleNewProject}
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
       />
 
       {/* Main Content Area */}

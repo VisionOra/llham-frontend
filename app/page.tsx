@@ -18,12 +18,15 @@ export default function HomePage() {
 
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white items-center justify-center">
-      <div className="text-center">
-        <div className="w-8 h-8 bg-white rounded mx-auto mb-4 flex items-center justify-center">
-          <span className="text-black text-sm font-bold">v0</span>
+        <div className="flex items-center space-x-2 mb-4" >
+          <div className="w-10 h-10  rounded flex items-center justify-center">
+            <span className="text-black text-xs font-bold"><img src="/logo.svg" alt="Icon" /></span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <span className=" font-medium tracking-widest">Ilham</span>
+          </div>
+          
         </div>
-        <p className="text-gray-400">Loading...</p>
-      </div>
     </div>
   )
 }
