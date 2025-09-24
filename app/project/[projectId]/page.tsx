@@ -47,6 +47,7 @@ function ProjectSessionsContent() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null)
   const [isDeletingSession, setIsDeletingSession] = useState(false)
+  const [checkingDeleteSessionId, setCheckingDeleteSessionId] = useState<string | null>(null)
 
   // Find the current project
   const currentProject = projects.find(p => p.id === projectId)
@@ -140,8 +141,15 @@ function ProjectSessionsContent() {
   }
 
   const handleDeleteSession = async (sessionId: string, sessionTitle: string) => {
-    setSessionToDelete(sessionId)
-    setShowDeleteDialog(true)
+    setCheckingDeleteSessionId(sessionId);
+    // Simulate async check if needed, or just use setTimeout to mimic API call
+    // If you have an API call to check session details, do it here and await it
+    // For now, just a short delay for UX consistency
+    setTimeout(() => {
+      setSessionToDelete(sessionId);
+      setShowDeleteDialog(true);
+      setCheckingDeleteSessionId(null);
+    }, 300);
   }
 
   const confirmDeleteSession = async () => {
@@ -304,8 +312,15 @@ function ProjectSessionsContent() {
                           }}
                           className="p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
                           title="Delete session"
+                          disabled={checkingDeleteSessionId === session.id || (isDeletingSession && sessionToDelete === session.id)}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {checkingDeleteSessionId === session.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : isDeletingSession && sessionToDelete === session.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
                         </button>
                       </div>
                     </div>

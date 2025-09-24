@@ -662,10 +662,10 @@ export const ChatInterface = React.memo(function ChatInterface({
       </ScrollArea>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-[#2a2a2a]">
+      <div className="p-4 border-t border-[#2a2a2a] ">
         {/* Uploaded Files Display */}
         {uploadedFiles.length > 0 && (
-          <div className="mb-3 space-y-2">
+          <div className="mb-4 space-y-2">
             <div className="text-xs text-gray-400 mb-2">Attached Files:</div>
             {uploadedFiles.map((file) => (
               <div key={file.id} className="flex items-center space-x-3 p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg">
@@ -702,26 +702,35 @@ export const ChatInterface = React.memo(function ChatInterface({
           </div>
         )}
 
-        <div className="flex items-center space-x-2 justify-center">
-          <FileUploadButton onFileUploaded={handleFileUploaded} />
-
-          <div className="flex-1">
+        <div className="flex items-center justify-center gap-2 min-h-[48px] sm:gap-2 gap-1 px-0 sm:px-0">
+          <div className="flex items-center h-full flex-shrink-0 rounded-md">
+            <FileUploadButton onFileUploaded={handleFileUploaded} />
+          </div>
+          <div className="flex-1 flex items-center h-full min-w-0">
             <AutoGrowTextarea
               value={inputValue}
               setValue={setInputValue}
               placeholder={isDocumentMode
-                ? "Paste selected text and add your request (e.g., 'make it more concise', 'modify this section')..."
-                : "Tell me about your project idea..."}
+                ? 'Paste selected text and add your request (e.g., \'make it more concise\', \'modify this section\')...'
+                : 'Tell me about your project idea...'}
+              onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
             />
           </div>
-
-          <Button
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || connectionStatus !== 'connected' || isGeneratingProposal}
-            className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50"
-          >
-            {(connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
+          <div className="flex items-center h-full flex-shrink-0">
+            <Button
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim() || connectionStatus !== 'connected' || isGeneratingProposal}
+              className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50 flex items-center justify-center sm:h-[45px] h-10 sm:min-w-[45px] min-w-[38px] rounded-md p-0 sm:p-0"
+              style={{ height: undefined, minWidth: undefined }}
+            >
+              {(connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between text-center mt-2">
