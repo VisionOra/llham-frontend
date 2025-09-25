@@ -219,16 +219,16 @@ export const ChatSidebar = React.memo(function ChatSidebar({
         )}
         {/* Collapse button in expanded mode, next to logo */}
         {!collapsed && (
-          <div className="absolute top-2 right-2 group">
+          <div className="fixed md:absolute top-4 left-[240px] md:top-2 md:right-2 group z-50" style={{maxWidth: '40px'}}>
             <button
-              className="p-1 rounded hover:bg-[#232326] transition-colors"
+              className="p-1 rounded hover:bg-[#232326] transition-colors w-full"
               style={{ background: 'none', border: 'none' }}
               onClick={() => setCollapsed(true)}
               aria-label="Collapse sidebar"
             >
-              <SidebarToggleIcon className="w-6 h-6 text-gray-400 mt-3 hover:cursor-pointer hover:text-white" />
+              <SidebarToggleIcon className="w-6 h-6 text-gray-400 hover:cursor-pointer hover:text-white" />
             </button>
-            <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
+            <div className="absolute left-10 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
               Collapse
             </div>
           </div>
