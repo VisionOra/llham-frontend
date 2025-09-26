@@ -59,6 +59,8 @@ export interface AuthResponse {
   message: string;
   access_token: string;
   refresh_token: string;
+  access: string;
+  refresh: string;
 }
 
 export interface Project {
@@ -109,7 +111,7 @@ export interface ProjectWithSessions {
 export const TokenManager = {
   setTokens(accessToken: string, refreshToken: string) {
     localStorage.setItem("access_token", accessToken);
-    localStorage.setItem("refresh_token", refreshToken);
+   localStorage.setItem("refresh_token", refreshToken);
   },
 
   getAccessToken(): string | null {
@@ -243,7 +245,12 @@ createResponseInterceptor(projectApi, false);
 export async function login(credentials: LoginRequest): Promise<AuthResponse> {
   try {
     const response = await authApi.post<AuthResponse>('/api/auth/login/', credentials);
-    return response.data;
+    // Use access and refresh keys for tokens
+    const { access, refresh, ...rest } = response.data;
+    if (access && refresh) {
+      TokenManager.setTokens(access, refresh);
+    }
+    return { ...rest, access, refresh } as AuthResponse;
   } catch (error) {
     throw error;
   }
@@ -258,7 +265,13 @@ export interface RegisterApiResponse {
 export async function register(userData: RegisterRequest): Promise<RegisterApiResponse> {
   try {
     const response = await authApi.post<AuthResponse>('/api/auth/register/', userData);
-    return { data: response.data, status: response.status };
+    // Save tokens to localStorage as access_token and refresh_token, using response.access and response.refresh
+    const { access, refresh, ...rest } = response.data;
+    if (access && refresh) {
+      localStorage.setItem("access_token", access);
+      localStorage.setItem("refresh_token", refresh);
+    }
+    return { data: { ...rest, access, refresh } as AuthResponse, status: response.status };
   } catch (error: any) {
     if (error.response) {
       return { data: error.response.data, status: error.response.status };

@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { FileUploadButton } from "@/components/file-upload"
 import { Send, User, Bot, FileText, Loader2, Sparkles, Shuffle, Check, X } from "lucide-react"
+import ReactMarkdown from "react-markdown"
 import { useWebSocket } from "@/contexts/websocket-context"
 import AutoGrowTextarea from "./AutoGrowTextarea"
 
@@ -120,15 +121,7 @@ export const ChatInterface = React.memo(function ChatInterface({
   }, [currentDocument, onDocumentGenerated])
 
   // Start session when sessionId is provided - memoized to prevent excessive calls
-  useEffect(() => {
-    if (sessionId && sessionId !== activeSessionId) {
-      console.log('[ChatInterface] Starting session:', sessionId)
-      startSession(sessionId, projectId)
-    } else if (!sessionId && activeSessionId) {
-      console.log('[ChatInterface] Ending session')
-      endSession()
-    }
-  }, [sessionId, projectId, activeSessionId])
+  // Session lifecycle is now managed by ChatPageContent. Removed duplicate startSession/endSession calls here.
 
   // Handle text selection from document viewer
   const handleTextSelect = useCallback((selectedText: string, element: HTMLElement) => {
@@ -491,90 +484,89 @@ export const ChatInterface = React.memo(function ChatInterface({
                       )
                     })()}
                     
-                    {/* Regular content for non-user messages */}
-                    {message.type !== "user" && (
-
+                    {/* Regular content for non-user messages, rendered as Markdown, except edit_suggestion */}
+                    {message.type !== "user" && message.type !== "edit_suggestion" && (
                       <div>
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {message.content}
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
                           {/* Show typing cursor for streaming messages */}
                           {message.id.startsWith('streaming-') && !message.suggestions && (
                             <span className="inline-block w-2 h-4 bg-green-400 ml-1 animate-pulse"></span>
                           )}
-                        </p>
+                        </div>
                       </div>
                     )}
                     
-                    {/* Edit suggestion with original/proposed content - Cursor AI style */}
-                    {message.type === "edit_suggestion" && message.editData && (
-                      <div className="mt-4 border border-blue-500/30 rounded-lg overflow-hidden">
+                    {/* Edit suggestion/history message rendering for resume (edit_history) and live suggestions */}
+                    {message.type === "edit_suggestion" && (
+                      <div className="mt-4 border border-purple-500/30 rounded-lg overflow-hidden">
                         {/* Header */}
-                        <div className="bg-blue-900/20 px-4 py-2 border-b border-blue-500/30">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-blue-300">✨ AI Edit Suggestion</span>
-                            <span className="text-xs text-gray-400">
-                              Confidence: {Math.round((message.editData.confidence || 0.9) * 100)}%
-                            </span>
-                          </div>
+                        <div className="bg-purple-900/20 px-4 py-2 border-b border-purple-500/30 flex items-center justify-between">
+                          <span className="text-sm font-medium text-purple-300">📝 Edit Suggestion</span>
+                          {message.status && (
+                            <span className={`text-xs font-semibold px-2 py-1 rounded ${message.status === 'accepted' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>{message.status.toUpperCase()}</span>
+                          )}
+                          {/* Show confidence for live socket edit_suggestion */}
+                          {message.editData?.confidence && (
+                            <span className="text-xs text-purple-200 ml-2">Confidence: {Math.round(message.editData.confidence * 100)}%</span>
+                          )}
                         </div>
-                        
-                        {/* Content comparison */}
                         <div className="p-4 space-y-4">
+                          {/* Section info (live socket) or section_identifier (history) */}
+                          {message.editData?.section_info && (
+                            <div className="text-xs text-purple-200 mb-2">Section: {message.editData.section_info}</div>
+                          )}
+                          {message.section_identifier && !message.editData?.section_info && (
+                            <div className="text-xs text-purple-200 mb-2">Section: {message.section_identifier}</div>
+                          )}
                           {/* Original content */}
-                          <div className="bg-red-900/20 border border-red-500/30 rounded-md p-3">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                              <span className="text-xs font-medium text-red-300">ORIGINAL</span>
-                            </div>
-                            <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
-                              {message.editData.original}
-                            </div>
-                          </div>
-                          
-                          {/* Proposed content */}
-                          <div className="bg-green-900/20 border border-green-500/30 rounded-md p-3">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                              <span className="text-xs font-medium text-green-300">PROPOSED</span>
-                            </div>
-                            <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
-                              {message.editData.proposed}
-                            </div>
-                          </div>
-                          
-                          {/* Reason */}
-                          {message.editData.reason && (
-                            <div className="bg-blue-900/20 border border-blue-500/30 rounded-md p-3">
-                              <div className="flex items-center space-x-2 mb-2">
-                                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                <span className="text-xs font-medium text-blue-300">REASONING</span>
+                          {message.editData?.original && (
+                            <div className="bg-red-900/20 border border-red-500/30 rounded-md p-3 mb-2">
+                              <div className="text-xs font-medium text-red-300 mb-1">ORIGINAL</div>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
+                                <ReactMarkdown>{message.editData.original}</ReactMarkdown>
                               </div>
+                            </div>
+                          )}
+                          {message.original_content && !message.editData?.original && (
+                            <div className="bg-red-900/20 border border-red-500/30 rounded-md p-3 mb-2">
+                              <div className="text-xs font-medium text-red-300 mb-1">ORIGINAL</div>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
+                                <ReactMarkdown>{message.original_content}</ReactMarkdown>
+                              </div>
+                            </div>
+                          )}
+                          {/* Proposed content */}
+                          {message.editData?.proposed && (
+                            <div className="bg-green-900/20 border border-green-500/30 rounded-md p-3 mb-2">
+                              <div className="text-xs font-medium text-green-300 mb-1">PROPOSED</div>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
+                                <ReactMarkdown>{message.editData.proposed}</ReactMarkdown>
+                              </div>
+                            </div>
+                          )}
+                          {message.proposed_content && !message.editData?.proposed && (
+                            <div className="bg-green-900/20 border border-green-500/30 rounded-md p-3 mb-2">
+                              <div className="text-xs font-medium text-green-300 mb-1">PROPOSED</div>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
+                                <ReactMarkdown>{message.proposed_content}</ReactMarkdown>
+                              </div>
+                            </div>
+                          )}
+                          {/* Reason */}
+                          {message.editData?.reason && (
+                            <div className="bg-blue-900/20 border border-blue-500/30 rounded-md p-3 mb-2">
+                              <div className="text-xs font-medium text-blue-300 mb-1">REASON</div>
                               <p className="text-sm text-blue-200">{message.editData.reason}</p>
                             </div>
                           )}
-                          
-                          {/* Accept/Reject buttons - Cursor AI style */}
-                          {message.showAcceptReject && (
-                            <div className="flex space-x-3 pt-2">
-                              <Button
-                                size="sm"
-                                onClick={() => acceptEdit(message.editData!.edit_id)}
-                                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium"
-                              >
-                                <Check className="w-4 h-4 mr-2" />
-                                Accept Change
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => rejectEdit(message.editData!.edit_id)}
-                                className="flex-1 border-red-500/50 text-red-400 hover:bg-red-900/20 font-medium"
-                              >
-                                <X className="w-4 h-4 mr-2" />
-                                Reject Change
-                              </Button>
+                          {message.edit_reason && !message.editData?.reason && (
+                            <div className="bg-blue-900/20 border border-blue-500/30 rounded-md p-3 mb-2">
+                              <div className="text-xs font-medium text-blue-300 mb-1">REASON</div>
+                              <p className="text-sm text-blue-200">{message.edit_reason}</p>
                             </div>
                           )}
+                          {/* Revert button intentionally hidden in chat for edit history */}
                         </div>
                       </div>
                     )}
@@ -711,7 +703,7 @@ export const ChatInterface = React.memo(function ChatInterface({
               value={inputValue}
               setValue={setInputValue}
               placeholder={isDocumentMode
-                ? 'Paste selected text and add your request (e.g., \'make it more concise\', \'modify this section\')...'
+                ? 'Select Text & add Your Query here (e.g., \'make it more concise\')...'
                 : 'Tell me about your project idea...'}
               onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
                 if (e.key === 'Enter' && !e.shiftKey) {

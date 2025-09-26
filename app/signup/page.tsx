@@ -60,8 +60,8 @@ function SignupForm() {
       const response = await apiRegister(formData)
       // Check for status code 201 for success
       if (response.status === 201 ) {
-        login(response.data.user, response.data.access_token, response.data.refresh_token)
-        router.push("/")
+        login(response.data.user, response.data.access, response.data.refresh)
+    router.push("/dashboard")
       } else {
         setError(response.data.message || "Registration failed")
       }
@@ -72,6 +72,28 @@ function SignupForm() {
     }
   }
 
+  // Google signup handler using old code logic
+  const handleGoogleSignup = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+    try {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+    const res = await fetch(`${apiBaseUrl}/api/auth/google/authorize/`);
+      if (!res.ok) throw new Error("Failed to get Google OAuth URL");
+      const data = await res.json();
+      if (data?.authorization_url) {
+        window.location.href = data.authorization_url;
+      } else {
+        setError("Google auth error");
+        setIsLoading(false);
+      }
+    } catch (error: any) {
+      setError(error?.message || "Google auth error server: internal server error");
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
       {/* Background gradient overlay */}
@@ -79,7 +101,7 @@ function SignupForm() {
 
       <div className="relative w-full max-w-md">
         {/* Back to home button */}
-        <Button variant="ghost" className="mb-6 text-gray-400 hover:text-white" onClick={() => router.push("/")}>
+        <Button variant="ghost" className="mb-6 text-gray-400 hover:text-black" onClick={() => router.push("/")}> 
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Home
         </Button>
@@ -87,9 +109,9 @@ function SignupForm() {
         <Card className="bg-[#1a1a1a] border-[#2a2a2a] shadow-2xl">
           <CardHeader className="space-y-1 text-center">
             <div className="flex items-center justify-center space-x-2 mb-4">
-              <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
-                <span className="text-black text-sm font-bold">v0</span>
-              </div>
+               <span className="w-10 h-10 rounded flex items-center justify-center ms-">
+                <span className="text-black text-xs font-bold"><img src="/logo.svg" alt="Icon" /></span>
+              </span>
               <span className="text-xl font-semibold text-white">Ilham</span>
             </div>
             <CardTitle className="text-2xl font-bold text-white">Create your account</CardTitle>
@@ -242,6 +264,18 @@ function SignupForm() {
                 {isLoading ? "Creating account..." : "Create account"}
               </Button>
             </form>
+
+            {/* Google Signup Button */}
+            <div className="w-full flex flex-col gap-4 pt-2">
+              <Button
+                onClick={handleGoogleSignup}
+                disabled={isLoading}
+                className="w-full bg-white text-black group font-medium py-2.5 rounded-lg flex items-center justify-center gap-2"
+              >
+                <img src="/google-logo.png" alt="Google" width={24} height={24} />
+                <span className="group-hover:text-white">Sign up with Google</span>
+              </Button>
+            </div>
 
             <div className="text-center text-sm text-gray-400">
               Already have an account?{" "}
