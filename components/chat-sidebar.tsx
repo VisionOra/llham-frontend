@@ -34,6 +34,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   collapsed: collapsedProp,
   setCollapsed: setCollapsedProp
 }: ChatSidebarProps) {
+  const [selectingProjectId, setSelectingProjectId] = useState<null | string>(null);
   const { projects: contextProjects, pagination: contextPagination, refreshProjects, createProject } = useProjects()
   const [projects, setProjects] = useState(contextProjects)
   const [pagination, setPagination] = useState(contextPagination)
@@ -341,15 +342,26 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               <div className="p-2">
                 {(searchTerm.trim() ? projects.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase())) : projects).map((project) => {
                   const isChecking = checkingDeleteProjectId === project.id;
+                  const isSelecting = selectingProjectId === project.id;
                   return (
                     <div
                       key={project.id + (isChecking ? '-checking' : '')}
-                      className="flex items-center space-x-3 p-3 hover:bg-[#1a1a1a] cursor-pointer rounded-lg mb-1 group"
+                      className={`flex items-center space-x-3 p-3 hover:bg-[#1a1a1a] cursor-pointer rounded-lg mb-1 group relative ${selectingProjectId && selectingProjectId !== project.id ? 'pointer-events-none opacity-50' : ''}`}
                     >
                       <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
                       <div 
                         className="flex-1 min-w-0"
-                        onClick={() => onProjectSelect?.(project.id)}
+                        onClick={async () => {
+                          if (!selectingProjectId) {
+                            setSelectingProjectId(project.id);
+                            try {
+                              await onProjectSelect?.(project.id);
+                            } finally {
+                              setSelectingProjectId(null);
+                            }
+                          }
+                        }}
+                        style={{ cursor: selectingProjectId ? 'not-allowed' : 'pointer' }}
                       >
                         <p className="text-sm text-white truncate group-hover:text-blue-400 transition-colors">
                           {project.title}
@@ -363,7 +375,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                           }}
                           className="p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-colors"
                           title="Delete project"
-                          disabled={isChecking}
+                          disabled={isChecking || !!selectingProjectId}
                         >
                           {isChecking ? (
                             <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -380,6 +392,15 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                           </svg>
                         </div>
                       </div>
+                      {/* Loader overlay for selecting project */}
+                      {isSelecting && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10 rounded-lg">
+                          <svg className="w-6 h-6 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                          </svg>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

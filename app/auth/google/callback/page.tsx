@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter, useSearchParams } from "next/navigation"
 import Loading from "@/app/loading"
+import ReactMarkdown from "react-markdown"
 
 export default function GoogleCallbackPage() {
   const router = useRouter()
@@ -67,7 +68,9 @@ export default function GoogleCallbackPage() {
       {loading ? (
         <Loading />
       ) : error ? (
-        <div className="text-red-400 text-lg">{error}</div>
+        <div className="text-red-400 text-lg">
+          <ReactMarkdown>{error}</ReactMarkdown>
+        </div>
       ) : null}
     </div>
   )

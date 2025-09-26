@@ -371,9 +371,19 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'edit_suggestion':
-              console.log('✏️ Edit suggestion received - showing in document overlay only')
-              // Don't add to chat messages, will be handled by document overlay
-              // Just store the latest edit suggestion for the document viewer
+              console.log('✏️ Edit suggestion received - adding to chat and document overlay')
+              // Add to chat messages
+              setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                type: 'edit_suggestion',
+                content: data.message,
+                timestamp: new Date(),
+                sessionId: data.session_id,
+                projectId: data.project_id,
+                editData: data.edit_data,
+                showAcceptReject: data.show_accept_reject
+              }])
+              // Also store for document overlay
               setLatestEditSuggestion({
                 id: Date.now().toString(),
                 type: 'edit_suggestion',
@@ -676,7 +686,29 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           }))
           
           console.log('[WebSocket] Loaded', previousMessages.length, 'previous messages')
-          setMessages(previousMessages)
+            // Map edit_history to ChatMessage format and merge with previousMessages
+            let editHistoryMessages: ChatMessage[] = [];
+            if (sessionData.edit_history && Array.isArray(sessionData.edit_history)) {
+              editHistoryMessages = sessionData.edit_history.map((edit: any, index: number) => ({
+                id: `edit-history-${index}`,
+                type: 'edit_suggestion',
+                content: edit.suggestion || edit.message || '',
+                timestamp: new Date(edit.updated_at || edit.created_at),
+                sessionId: sessionId,
+                projectId: projectId,
+                editId: edit.edit_id || undefined,
+                status: edit.status || undefined,
+                documentContext: edit.document_context || undefined,
+                section_identifier: edit.section_identifier,
+                original_content: edit.original_content,
+                proposed_content: edit.proposed_content,
+                edit_reason: edit.edit_reason,
+                can_revert: edit.can_revert
+              }));
+            }
+            // Merge and sort by timestamp
+            const allMessages = [...previousMessages, ...editHistoryMessages].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+            setMessages(allMessages);
         }
         
         // Set agent mode based on session state
