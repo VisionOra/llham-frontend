@@ -32,7 +32,7 @@ export function FileUpload({
   onFileUploaded,
   onFileRemoved,
   acceptedTypes = [".pdf", ".doc", ".docx", ".txt"],
-  maxSize = 10,
+  maxSize = 3,
   multiple = false,
 }: FileUploadProps) {
   const [files, setFiles] = useState<UploadedFile[]>([])
@@ -268,6 +268,7 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes"
@@ -324,14 +325,18 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
         return
       }
 
-      if (file.size > 10 * 1024 * 1024) {
-        alert("File size too large. Maximum size: 10MB")
+
+      if (file.size > 3 * 1024 * 1024) {
+        setPendingFile(file)
+        setFileError("File size too large. Maximum size: 3MB")
+        setShowConfirmDialog(true)
         return
       }
 
       // Show confirmation dialog
-      setPendingFile(file)
-      setShowConfirmDialog(true)
+  setPendingFile(file)
+  setFileError(null)
+  setShowConfirmDialog(true)
     }
 
     // Reset input value so the same file can be selected again
@@ -339,15 +344,16 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
   }
 
   const handleConfirmUpload = () => {
-    if (pendingFile) {
+    if (pendingFile && !fileError) {
       processAndUploadFile(pendingFile)
       setPendingFile(null)
+      setShowConfirmDialog(false)
     }
-    setShowConfirmDialog(false)
   }
 
   const handleCancelUpload = () => {
     setPendingFile(null)
+    setFileError(null)
     setShowConfirmDialog(false)
   }
 
@@ -408,16 +414,25 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
                     </div>
                   </div>
                 </div>
+                {fileError && (
+                  <div className="mt-3 bg-red-900/20 border border-red-700/50 rounded-lg p-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                      <p className="text-xs text-red-300">{fileError}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-blue-300">
-                    The file will be processed and added to your chat. You can then ask questions or request analysis.
-                  </p>
+              {!fileError && (
+                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-blue-300">
+                      The file will be processed and added to your chat. You can then ask questions or request analysis.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -432,6 +447,7 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
             <Button
               onClick={handleConfirmUpload}
               className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
+              disabled={!!fileError}
             >
               <Upload className="w-4 h-4 mr-2" />
               Upload File
