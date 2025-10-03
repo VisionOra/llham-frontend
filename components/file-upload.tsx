@@ -6,7 +6,8 @@ import { useState, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Upload, File, FileText, X, Check, AlertCircle, Loader2, Paperclip } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Upload, File, FileText, X, Check, AlertCircle, Loader2, Paperclip, FileIcon } from "lucide-react"
 
 interface UploadedFile {
   id: string
@@ -238,32 +239,17 @@ export function FileUpload({
           <h4 className="text-sm font-medium text-white">Uploaded Files</h4>
           {files.map((file) => (
             <Card key={file.id} className="bg-[#1a1a1a] border-[#2a2a2a] p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3 flex-1 min-w-0">
-                  {getFileIcon(file.type)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{file.name}</p>
-                    <div className="flex items-center space-x-2 text-xs text-gray-400">
-                      <span>{formatFileSize(file.size)}</span>
-                      <span>•</span>
-                      <span className="flex items-center space-x-1">
-                        {getStatusIcon(file)}
-                        <span>{getStatusText(file)}</span>
-                      </span>
-                    </div>
+              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                {getFileIcon(file.type)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white break-all line-clamp-2 max-w-[220px] sm:max-w-[320px] overflow-hidden cursor-pointer" title={file.name} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{file.name}</p>
+                  <div className="flex items-center space-x-2 text-xs text-gray-400 mt-1">
+                    <span>{formatFileSize(file.size)}</span>
+                    <span>•</span>
+                    <span>{file.type || 'Unknown'}</span>
                   </div>
                 </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeFile(file.id)}
-                  className="text-gray-400 hover:text-red-400 h-8 w-8 p-0"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
               </div>
-
               {(file.status === "uploading" || file.status === "processing") && (
                 <div className="mt-2">
                   <Progress value={file.progress} className="h-1" />
@@ -280,6 +266,49 @@ export function FileUpload({
 // Compact file upload button for chat interface
 export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: UploadedFile) => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes"
+    const k = 1024
+    const sizes = ["Bytes", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+  }
+
+  const processAndUploadFile = async (file: File) => {
+    // Process file to base64 before creating UploadedFile
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(',')[1];
+      const uploadedFile: UploadedFile = {
+        id: Date.now().toString(),
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        status: "completed",
+        progress: 100,
+        content: base64,
+      };
+      onFileUploaded(uploadedFile);
+    };
+    reader.onerror = () => {
+      const uploadedFile: UploadedFile = {
+        id: Date.now().toString(),
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        status: "error",
+        progress: 100,
+        content: undefined,
+        error: "Failed to convert file to base64",
+      };
+      onFileUploaded(uploadedFile);
+    };
+    reader.readAsDataURL(file);
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -300,37 +329,26 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
         return
       }
 
-      // Process file to base64 before creating UploadedFile
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(',')[1];
-        const uploadedFile: UploadedFile = {
-          id: Date.now().toString(),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          status: "completed",
-          progress: 100,
-          content: base64,
-        };
-        onFileUploaded(uploadedFile);
-      };
-      reader.onerror = () => {
-        const uploadedFile: UploadedFile = {
-          id: Date.now().toString(),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          status: "error",
-          progress: 100,
-          content: undefined,
-          error: "Failed to convert file to base64",
-        };
-        onFileUploaded(uploadedFile);
-      };
-      reader.readAsDataURL(file);
+      // Show confirmation dialog
+      setPendingFile(file)
+      setShowConfirmDialog(true)
     }
+
+    // Reset input value so the same file can be selected again
+    e.target.value = ''
+  }
+
+  const handleConfirmUpload = () => {
+    if (pendingFile) {
+      processAndUploadFile(pendingFile)
+      setPendingFile(null)
+    }
+    setShowConfirmDialog(false)
+  }
+
+  const handleCancelUpload = () => {
+    setPendingFile(null)
+    setShowConfirmDialog(false)
   }
 
   return (
@@ -351,6 +369,76 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
         onChange={handleFileChange}
         className="hidden"
       />
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white sm:max-w-md max-w-[calc(100vw-2rem)]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <FileIcon className="w-5 h-5 text-blue-400 flex-shrink-0" />
+              Confirm File Upload
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Review the file details before uploading
+            </DialogDescription>
+          </DialogHeader>
+          
+          {pendingFile && (
+            <div className="space-y-4 py-4">
+              <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4 space-y-3 overflow-hidden">
+                <div className="flex items-start gap-3 min-w-0 w-full">
+                  <FileText className="w-8 h-8 text-blue-400 flex-shrink-0 mt-1" />
+                  <div className="flex-1 min-w-0 overflow-hidden w-full">
+                    <p
+                      className="text-sm font-medium text-white break-all line-clamp-2 max-w-full overflow-hidden cursor-pointer"
+                      title={pendingFile.name}
+                      style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                    >
+                      {pendingFile.name}
+                    </p>
+                    <div className="mt-2 space-y-1 text-xs text-gray-400">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 flex-shrink-0">Size:</span>
+                        <span className="font-medium text-green-400">{formatFileSize(pendingFile.size)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 flex-shrink-0">Type:</span>
+                        <span className="font-medium text-blue-400 truncate">{pendingFile.type || 'Unknown'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-blue-300">
+                    The file will be processed and added to your chat. You can then ask questions or request analysis.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCancelUpload}
+              className="border-[#2a2a2a] text-gray-400 hover:bg-[#2a2a2a] hover:text-white w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmUpload}
+              className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Upload File
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

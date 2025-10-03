@@ -1,10 +1,11 @@
 "use client"
-
+import Image from "next/image"
+import "@/styles/sidebar-settings-icon.css"
 import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
-
+// import settingIcon from "@/public/settings.svg"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ArrowLeft, User, LogOut, Search, Clock, Plus, Trash2, Link } from "lucide-react"
 import { SidebarToggleIcon } from "@/components/ui/sidebar-toggle-icon"
@@ -456,13 +457,18 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   {!showProjects && !collapsed && <div className="flex-1"></div>}
 
       {/* Footer */}
-      <div className={`border-t border-[#2a2a2a] flex items-center ${collapsed ? 'justify-center p-2' : 'justify-between p-4'}`}>
+
+      <div className={`border-t border-[#2a2a2a] ${collapsed ? 'flex flex-col items-center justify-center gap-2 p-2' : 'flex items-center justify-between p-4'}`}>
         {collapsed ? (
           <>
-            <User className="w-5 h-5 text-gray-400" />
-            <Button size="icon" variant="ghost" className="text-gray-400 hover:text-black ml-2" onClick={onLogout}>
-              <LogOut className="w-5 h-5" />
-            </Button>
+            <div className="flex flex-col items-center gap-4 w-full">
+              <Button size="icon" variant="ghost" className="button-settings text-gray-400 hover:text-black mx-auto" aria-label="Settings" onClick={() => router.push('/settings')}>
+                <Image src="/settings.svg" alt="Settings" width={20} height={20} className="w-5 h-5 sidebar-settings-icon" />
+              </Button>
+              <Button size="icon" variant="ghost" className="text-gray-400 hover:text-black mx-auto" onClick={onLogout} aria-label="Logout">
+                <LogOut className="w-5 h-5" />
+              </Button>
+            </div>
           </>
         ) : (
           <>
@@ -470,9 +476,14 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               <User className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-400">{user?.first_name || user?.username || 'User'}</span>
             </div>
-            <Button size="sm" variant="ghost" className="text-gray-400 hover:text-black" onClick={onLogout}>
-              <LogOut className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Button size="icon" variant="ghost" className="button-settings text-gray-400 hover:text-black" aria-label="Settings" onClick={() => router.push('/settings')}>
+                <Image src="/settings.svg" alt="Settings" width={16} height={16} className="w-4 h-4 sidebar-settings-icon" />
+              </Button>
+              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-black" onClick={onLogout}>
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
           </>
         )}
       </div>
