@@ -91,7 +91,7 @@ const SettingsPage = () => {
       setLoading(true)
       setError("")
       try {
-        const res = await projectApi.get("/api/proposals/settings/get_settings/", {
+        const res = await projectApi.get("/api/proposals/settings/", {
           headers: { Authorization: `Bearer ${token}` },
         })
         const data = res.data
