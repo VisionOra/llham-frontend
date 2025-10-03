@@ -56,7 +56,8 @@ function MainLayoutContent({ children }: MainLayoutProps) {
   
   // Show projects in sidebar when on dashboard or project pages
   const showProjects = pathname === '/dashboard' || 
-                      pathname.startsWith('/project/')
+                      pathname.startsWith('/project/') ||
+                      pathname.startsWith('/settings')
 
   if (!showSidebar) {
     return <>{children}</>

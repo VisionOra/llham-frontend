@@ -1,0 +1,7 @@
+.sidebar-settings-icon {
+  filter: brightness(0) invert(1);
+  transition: filter 0.2s;
+}
+.button-settings:hover .sidebar-settings-icon {
+  filter: none;
+}

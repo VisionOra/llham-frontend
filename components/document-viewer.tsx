@@ -412,8 +412,8 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
                   <div className="w-3 h-3 bg-red-400 rounded-full"></div>
                   <span className="text-sm font-semibold text-red-300">CURRENT</span>
                 </div>
-                <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4">
-                  <pre className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+                <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4 max-h-[200px] overflow-y-auto">
+                  <pre className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
                     {htmlToPlainText(editSuggestion.editData.original)}
                   </pre>
                 </div>
@@ -425,8 +425,8 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
                   <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                   <span className="text-sm font-semibold text-green-300">PROPOSED</span>
                 </div>
-                <div className="bg-green-900/20 border border-green-500/50 rounded-lg p-4">
-                  <pre className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+                <div className="bg-green-900/20 border border-green-500/50 rounded-lg p-4 max-h-[200px] overflow-y-auto">
+                  <pre className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
                     {htmlToPlainText(editSuggestion.editData.proposed)}
                   </pre>
                 </div>
