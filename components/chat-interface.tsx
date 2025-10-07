@@ -138,10 +138,11 @@ export const ChatInterface = React.memo(function ChatInterface({
   // Memoize helper functions
   const detectPastedContent = useCallback((message: string) => {
     // Look for specific document patterns that indicate pasted content
-    const hasDocumentPatterns = /Essential Features|Advanced Features|Core Features|Project Planning|Technical Specification|Must-Have|Nice-to-Have|Business Analysis|Resource Allocation|Architecture Considerations|Integration Requirements|Security and Compliance|Unique Differentiators|Technology Stack|Frontend|Backend|Database|Infrastructure|Microservices|Scalability|Performance|Authentication|User Management|Responsive Design|Export and Deployment|Target Audience|Small to Medium|Startups|Enterprise|Non-Technical|Developers/i.test(message)
+    const hasDocumentPatterns = /Essential Features|Advanced Features|Core Features|Project Planning|Technical Specification|Must-Have|Nice-to-Have|Business Analysis|Resource Allocation|Architecture Considerations|Integration Requirements|Security and Compliance|Unique Differentiators|Technology Stack|Frontend|Backend|Database|Infrastructure|Microservices|Scalability|Performance|Authentication|User Management|Responsive Design|Export and Deployment|Target Audience|Small to Medium|Startups|Enterprise|Non-Technical|Developers|Similar Products|Market Research|Recommendation|Note:|API configuration|comprehensive market research|Direct competitors|Similar apps|Market analysis reports|Industry benchmarks|product positioning|feature prioritization|online tools|market trends|consumer behavior|industry forums/i.test(message)
     const hasColons = message.includes(':')
-    const hasEditKeywords = /\b(make it|modify|change|edit|improve|update|rewrite|concise|enhance|fix|adjust|refine|optimize)\b/i.test(message)
-    const hasLongContent = message.length > 50 // Lower threshold for detection
+    const hasEditKeywords = /\b(make it|modify|change|edit|improve|update|rewrite|concise|enhance|fix|adjust|refine|optimize|enhance)\b/i.test(message)
+    const hasLongContent = message.length > 100 // Increased threshold for better detection
+    const hasStructuredContent = message.includes('•') || message.includes('-') || message.includes('1.') || message.includes('2.')
     
     console.log('[ChatInterface] Detection analysis:', {
       message: message.substring(0, 100),
@@ -149,12 +150,13 @@ export const ChatInterface = React.memo(function ChatInterface({
       hasColons,
       hasEditKeywords,
       hasLongContent,
-      result: hasDocumentPatterns && (hasColons || hasEditKeywords)
+      hasStructuredContent,
+      result: (hasDocumentPatterns && (hasColons || hasEditKeywords)) || (hasLongContent && hasStructuredContent)
     })
     
-    // Detect as pasted if it has document patterns AND colons (typical of document sections)
-    // OR if it has document patterns AND edit keywords (user pasted + added request)
-    return hasDocumentPatterns && (hasColons || hasEditKeywords)
+    // Detect as pasted if it has document patterns AND (colons OR edit keywords)
+    // OR if it's long content with structured formatting
+    return (hasDocumentPatterns && (hasColons || hasEditKeywords)) || (hasLongContent && hasStructuredContent)
   }, [])
 
   const formatMessageForDisplay = useCallback((message: string): FormattedMessage => {
@@ -431,9 +433,9 @@ export const ChatInterface = React.memo(function ChatInterface({
                 </div>
 
                 {/* Message Content */}
-                <div className={`flex-1 max-w-[80%] ${message.type === "user" ? "text-right" : "text-left"}`}>
+                <div className={`flex-1 max-w-[80%] ${message.type === "user" ? "text-right" : "text-left"} break-words`}>
                   <div
-                    className={`inline-block p-3 rounded-lg ${
+                    className={`inline-block p-3 rounded-lg max-w-full ${
                       message.type === "user"
                         ? "bg-green-700 text-white"
                         : message.type === "ai"
@@ -447,7 +449,7 @@ export const ChatInterface = React.memo(function ChatInterface({
                                 : "bg-blue-900/30 text-blue-300 border border-blue-700"
                     }`}
                   >
-                    {/* Cursor AI style display for user messages with pasted content */}
+                    {/* User messages with special formatting for pasted content */}
                     {message.type === "user" && (() => {
                       const formatted = formatMessageForDisplay(message.content)
                       const isFileUploadRequest = message.content?.toLowerCase().includes("uploaded an attachment")
@@ -478,24 +480,37 @@ export const ChatInterface = React.memo(function ChatInterface({
                               </div>
                             </div>
                           ) : (
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                            <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                              {message.content}
+                            </div>
                           )}
                         </>
                       )
                     })()}
                     
-                    {/* Regular content for non-user messages, rendered as Markdown, except edit_suggestion */}
-                    {message.type !== "user" && message.type !== "edit_suggestion" && (
-                      <div>
-                        <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                    {/* AI and other message types with truncation for long messages */}
+                    {message.type !== "user" && message.type !== "edit_suggestion" && (() => {
+                      const isLongMessage = message.content.length > 1000
+                      const shouldTruncate = isLongMessage && !message.id.startsWith('streaming-') && !message.isStreaming
+                      const displayContent = shouldTruncate 
+                        ? message.content.substring(0, 100) + '...'
+                        : message.content
+                      
+                      return (
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                          <ReactMarkdown>{displayContent}</ReactMarkdown>
+                          {shouldTruncate && (
+                            <div className="mt-2 text-xs text-gray-400 italic">
+                              Message truncated ({message.content.length} chars). Full content available in document.
+                            </div>
+                          )}
                           {/* Show typing cursor for streaming messages */}
                           {message.id.startsWith('streaming-') && !message.suggestions && (
                             <span className="inline-block w-2 h-4 bg-green-400 ml-1 animate-pulse"></span>
                           )}
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
                     
                     {/* Edit suggestion/history message rendering for resume (edit_history) and live suggestions */}
                     {message.type === "edit_suggestion" && (
