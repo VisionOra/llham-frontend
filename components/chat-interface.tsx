@@ -66,6 +66,8 @@ export const ChatInterface = React.memo(function ChatInterface({
   const [inputValue, setInputValue] = useState("")
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
+  const [isUserTyping, setIsUserTyping] = useState(false)
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set())
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -113,6 +115,16 @@ export const ChatInterface = React.memo(function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
+  // Clear user typing indicator when agent stops typing
+  useEffect(() => {
+    console.log('[ChatInterface] isTyping changed:', isTyping, 'isUserTyping:', isUserTyping)
+    // Only clear when agent was typing and now stopped
+    if (isTyping === false && isUserTyping) {
+      console.log('[ChatInterface] Clearing isUserTyping')
+      setIsUserTyping(false)
+    }
+  }, [isTyping])
+
   // Handle document generation callback
   useEffect(() => {
     if (currentDocument && onDocumentGenerated) {
@@ -155,8 +167,8 @@ export const ChatInterface = React.memo(function ChatInterface({
     })
     
     // Detect as pasted if it has document patterns AND (colons OR edit keywords)
-    // OR if it's long content with structured formatting
-    return (hasDocumentPatterns && (hasColons || hasEditKeywords)) || (hasLongContent && hasStructuredContent)
+    // OR if it's long content with structured formatting AND has edit keywords
+    return (hasDocumentPatterns && (hasColons || hasEditKeywords)) || (hasLongContent && hasStructuredContent && hasEditKeywords)
   }, [])
 
   const formatMessageForDisplay = useCallback((message: string): FormattedMessage => {
@@ -237,6 +249,10 @@ export const ChatInterface = React.memo(function ChatInterface({
 
     setInputValue("");
     setUploadedFiles([]);
+    
+    // Show typing indicator immediately when user sends message
+    console.log('[ChatInterface] Setting isUserTyping to true')
+    setIsUserTyping(true);
 
     // Determine type
     const type = pdfFilesToSend.length > 0 ? 'pdf_upload' : 'chat_message';
@@ -310,6 +326,18 @@ export const ChatInterface = React.memo(function ChatInterface({
   const handleSuggestionClick = useCallback((suggestion: string) => {
     setInputValue(suggestion)
     textareaRef.current?.focus()
+  }, [])
+
+  const toggleMessageExpansion = useCallback((messageId: string) => {
+    setExpandedMessages(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId)
+      } else {
+        newSet.add(messageId)
+      }
+      return newSet
+    })
   }, [])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -433,7 +461,7 @@ export const ChatInterface = React.memo(function ChatInterface({
                 </div>
 
                 {/* Message Content */}
-                <div className={`flex-1 max-w-[80%] ${message.type === "user" ? "text-right" : "text-left"} break-words`}>
+                <div className={`flex-1 max-w-[80%] text-left break-words`}>
                   <div
                     className={`inline-block p-3 rounded-lg max-w-full ${
                       message.type === "user"
@@ -461,56 +489,93 @@ export const ChatInterface = React.memo(function ChatInterface({
                               <span className="text-sm text-gray-200 font-medium">Uploaded 1 PDF file</span>
                             </div>
                           )}
-                          {formatted.isPastedContent && formatted.userRequest && formatted.pastedText && formatted.preview ? (
-                            <div className="space-y-2">
-                              {/* User's request */}
-                              <p className="text-sm font-medium">{formatted.userRequest}</p>
-                              {/* Pasted content preview - Cursor style */}
-                              <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
-                                <div className="flex items-center space-x-2 mb-1">
-                                  <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                  <span className="text-xs font-medium text-blue-200">SELECTED TEXT</span>
+                          {formatted.isPastedContent && formatted.userRequest && formatted.pastedText && formatted.preview ? (() => {
+                            const isLongPastedText = formatted.pastedText.length > 500
+                            const isExpanded = expandedMessages.has(message.id)
+                            const shouldTruncate = isLongPastedText && !isExpanded
+                            const displayPreview = shouldTruncate 
+                              ? formatted.pastedText.substring(0, 200) + '...'
+                              : formatted.pastedText
+                            
+                            return (
+                              <div className="space-y-2">
+                                {/* User's request */}
+                                <p className="text-sm font-medium">{formatted.userRequest}</p>
+                                {/* Pasted content preview - Cursor style */}
+                                <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                    <span className="text-xs font-medium text-blue-200">Pasted Text</span>
+                                  </div>
+                                  <p className="text-xs text-gray-300 font-mono">
+                                    {displayPreview}
+                                  </p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    {formatted.pastedText.length} characters
+                                  </p>
+                                  {shouldTruncate && (
+                                    <button
+                                      onClick={() => toggleMessageExpansion(message.id)}
+                                      className="mt-2 text-xs text-blue-300 hover:text-blue-200 underline"
+                                    >
+                                      Read more
+                                    </button>
+                                  )}
+                                  {isExpanded && isLongPastedText && (
+                                    <button
+                                      onClick={() => toggleMessageExpansion(message.id)}
+                                      className="mt-2 text-xs text-blue-300 hover:text-blue-200 underline"
+                                    >
+                                      Show less
+                                    </button>
+                                  )}
                                 </div>
-                                <p className="text-xs text-gray-300 font-mono">
-                                  {formatted.preview}
-                                </p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                  {formatted.pastedText.length} characters
-                                </p>
                               </div>
-                            </div>
-                          ) : (
-                            <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                              {message.content}
-                            </div>
-                          )}
+                            )
+                          })() : (() => {
+                            const isLongMessage = message.content.length > 500
+                            const isExpanded = expandedMessages.has(message.id)
+                            const shouldTruncate = isLongMessage && !isExpanded
+                            const displayContent = shouldTruncate 
+                              ? message.content.substring(0, 200) + '...'
+                              : message.content
+                            
+                            return (
+                              <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                {displayContent}
+                                {shouldTruncate && (
+                                  <button
+                                    onClick={() => toggleMessageExpansion(message.id)}
+                                    className="ml-2 text-xs text-blue-300 hover:text-blue-200 underline"
+                                  >
+                                    Read more
+                                  </button>
+                                )}
+                                {isExpanded && isLongMessage && (
+                                  <button
+                                    onClick={() => toggleMessageExpansion(message.id)}
+                                    className="ml-2 text-xs text-blue-300 hover:text-blue-200 underline"
+                                  >
+                                    Show less
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </>
                       )
                     })()}
                     
-                    {/* AI and other message types with truncation for long messages */}
-                    {message.type !== "user" && message.type !== "edit_suggestion" && (() => {
-                      const isLongMessage = message.content.length > 1000
-                      const shouldTruncate = isLongMessage && !message.id.startsWith('streaming-') && !message.isStreaming
-                      const displayContent = shouldTruncate 
-                        ? message.content.substring(0, 100) + '...'
-                        : message.content
-                      
-                      return (
-                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                          <ReactMarkdown>{displayContent}</ReactMarkdown>
-                          {shouldTruncate && (
-                            <div className="mt-2 text-xs text-gray-400 italic">
-                              Message truncated ({message.content.length} chars). Full content available in document.
-                            </div>
-                          )}
-                          {/* Show typing cursor for streaming messages */}
-                          {message.id.startsWith('streaming-') && !message.suggestions && (
-                            <span className="inline-block w-2 h-4 bg-green-400 ml-1 animate-pulse"></span>
-                          )}
-                        </div>
-                      )
-                    })()}
+                    {/* AI and other message types - no truncation for agent messages */}
+                    {message.type !== "user" && message.type !== "edit_suggestion" && (
+                      <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                        {/* Show typing cursor for streaming messages */}
+                        {message.id.startsWith('streaming-') && !message.suggestions && (
+                          <span className="inline-block w-2 h-4 bg-green-400 ml-1 animate-pulse"></span>
+                        )}
+                      </div>
+                    )}
                     
                     {/* Edit suggestion/history message rendering for resume (edit_history) and live suggestions */}
                     {message.type === "edit_suggestion" && (
@@ -609,6 +674,33 @@ export const ChatInterface = React.memo(function ChatInterface({
               )}
             </div>
           ))}
+
+          {/* Agent typing indicator */}
+          {(() => {
+            const shouldShow = (isTyping || isUserTyping) && !isGeneratingProposal
+            console.log('[ChatInterface] Typing indicator check:', { isTyping, isUserTyping, isGeneratingProposal, shouldShow })
+            return shouldShow
+          })() && (
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="inline-block p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] min-w-[200px]">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-300">
+                      Agent is typing
+                    </span>
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Proposal generation progress */}
           {isGeneratingProposal && (
