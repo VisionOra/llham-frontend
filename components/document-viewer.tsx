@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { FileText, Printer, Edit3, ZoomIn, ZoomOut, Type, Copy, Check, X } from "lucide-react"
-import { PdfExporter } from "@/components/pdf-exporter"
+import { MarkdownExporter } from "@/components/markdown-exporter"
 
 interface Document {
   id?: string
@@ -113,72 +113,126 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   }, [document, processedContent])
 
   useEffect(() => {
-    let startNode: Node | null = null
-    let startOffset = 0
     let isSelecting = false
+    let selectionTimeout: NodeJS.Timeout | null = null
 
     const handleMouseDown = (e: MouseEvent) => {
       if (contentRef.current?.contains(e.target as Node)) {
         isSelecting = true
-        // Clear any existing selection
+        // Clear any existing selection and state
         window.getSelection()?.removeAllRanges()
         setSelectedText("")
         setIsSelecting(false)
         setCopied(false)
         
-        // Record where selection started
-        const target = e.target as Node
-        if (target.nodeType === Node.TEXT_NODE) {
-          startNode = target
-        } else if (target.firstChild?.nodeType === Node.TEXT_NODE) {
-          startNode = target.firstChild
+        // Clear any pending selection timeout
+        if (selectionTimeout) {
+          clearTimeout(selectionTimeout)
+          selectionTimeout = null
         }
       }
     }
 
     const handleMouseUp = (e: MouseEvent) => {
-      if (!isSelecting || !contentRef.current?.contains(e.target as Node)) {
-        isSelecting = false
-        return
-      }
-
+      if (!isSelecting) return
+      
       isSelecting = false
       
-      // Get the current selection after mouse up
-      setTimeout(() => {
+      // Clear any existing timeout
+      if (selectionTimeout) {
+        clearTimeout(selectionTimeout)
+      }
+      
+      // Get the current selection after mouse up with a longer delay for better reliability
+      selectionTimeout = setTimeout(() => {
         const selection = window.getSelection()
         if (selection && !selection.isCollapsed) {
           const text = selection.toString().trim()
           
-          // Simple validation - just check if we have text and it's reasonable
-          if (text && text.length > 0 && text.length < 1000) {
-            console.log('[DocumentViewer] Selected text:', text)
+          // More robust validation
+          if (text && text.length > 0) {
+            console.log('[DocumentViewer] Selected text:', text.length, 'characters')
             setSelectedText(text)
             setIsSelecting(true)
             setCopied(false)
             
             // Notify parent component about text selection
-            if (onTextSelect && contentElement) {
-              onTextSelect(text, contentElement)
+            if (onTextSelect && contentRef.current) {
+              onTextSelect(text, contentRef.current)
             }
+          } else {
+            console.log('[DocumentViewer] No valid text selected')
+          }
+        } else {
+          console.log('[DocumentViewer] No selection found')
+        }
+        selectionTimeout = null
+      }, 50) // Increased timeout for better reliability
+    }
+
+    // Add selection change listener for more reliable detection
+    const handleSelectionChange = () => {
+      if (isSelecting) return // Don't interfere with mouse selection
+      
+      const selection = window.getSelection()
+      if (selection && !selection.isCollapsed && contentRef.current?.contains(selection.anchorNode)) {
+        const text = selection.toString().trim()
+        if (text && text.length > 0) {
+          console.log('[DocumentViewer] Selection changed:', text.length, 'characters')
+          setSelectedText(text)
+          setIsSelecting(true)
+          setCopied(false)
+          
+          if (onTextSelect && contentRef.current) {
+            onTextSelect(text, contentRef.current)
           }
         }
-      }, 10)
+      }
+    }
+
+    // Handle keyboard selection (Ctrl+A, Shift+Arrow keys, etc.)
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (contentRef.current?.contains(e.target as Node)) {
+        // Small delay to ensure selection is complete
+        setTimeout(() => {
+          const selection = window.getSelection()
+          if (selection && !selection.isCollapsed) {
+            const text = selection.toString().trim()
+            if (text && text.length > 0) {
+              console.log('[DocumentViewer] Keyboard selection:', text.length, 'characters')
+              setSelectedText(text)
+              setIsSelecting(true)
+              setCopied(false)
+              
+              if (onTextSelect && contentRef.current) {
+                onTextSelect(text, contentRef.current)
+              }
+            }
+          }
+        }, 10)
+      }
     }
 
     const contentElement = contentRef.current
     if (contentElement) {
       contentElement.addEventListener("mousedown", handleMouseDown)
       contentElement.addEventListener("mouseup", handleMouseUp)
+      contentElement.addEventListener("keyup", handleKeyUp)
+      window.document.addEventListener("selectionchange", handleSelectionChange)
     }
 
     return () => {
       if (contentElement) {
         contentElement.removeEventListener("mousedown", handleMouseDown)
         contentElement.removeEventListener("mouseup", handleMouseUp)
+        contentElement.removeEventListener("keyup", handleKeyUp)
+        window.document.removeEventListener("selectionchange", handleSelectionChange)
+      }
+      if (selectionTimeout) {
+        clearTimeout(selectionTimeout)
       }
     }
-  }, [document])
+  }, [document, onTextSelect])
 
   const handlePrint = () => {
     if (!document) return;
@@ -215,14 +269,32 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   const handleCopyText = async () => {
     if (selectedText) {
       try {
-        await navigator.clipboard.writeText(selectedText)
-        setCopied(true)
-        console.log('[DocumentViewer] Text copied to clipboard')
+        // Use the modern clipboard API with fallback for older browsers
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(selectedText)
+        } else {
+          // Fallback for older browsers or non-secure contexts
+          const textArea = window.document.createElement('textarea')
+          textArea.value = selectedText
+          textArea.style.position = 'fixed'
+          textArea.style.left = '-999999px'
+          textArea.style.top = '-999999px'
+          window.document.body.appendChild(textArea)
+          textArea.focus()
+          textArea.select()
+          window.document.execCommand('copy')
+          window.document.body.removeChild(textArea)
+        }
         
-        // Reset copy state after 2 seconds
-        setTimeout(() => setCopied(false), 2000)
+        setCopied(true)
+        console.log('[DocumentViewer] Text copied to clipboard:', selectedText.length, 'characters')
+        
+        // Reset copy state after 3 seconds (longer for large text)
+        setTimeout(() => setCopied(false), 3000)
       } catch (error) {
         console.error('Failed to copy text:', error)
+        // Show user-friendly error message
+        alert('Failed to copy text. Please try selecting a smaller portion or use Ctrl+C (Cmd+C on Mac) instead.')
       }
     }
   }
@@ -307,7 +379,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
               <Printer className="w-4 h-4 mr-1" />
               Print
             </Button>
-            <PdfExporter
+            <MarkdownExporter
               document={document}
               processedContent={processedContent}
               variant="outline"
@@ -466,15 +538,18 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
 
       {/* Selection Toolbar */}
       {isSelecting && selectedText && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-[#1a1a1a] border border-blue-500 rounded-lg p-3 shadow-lg max-w-md">
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-[#1a1a1a] border border-blue-500 rounded-lg p-3 shadow-lg max-w-lg">
           <div className="flex items-center space-x-3">
             <div className="text-sm text-gray-300 flex-1 min-w-0">
               <span className="text-blue-400 font-medium">Selected:</span>
               <div className="mt-1 text-xs text-gray-400 truncate">
-                {selectedText.length > 80 ? `${selectedText.substring(0, 80)}...` : selectedText}
+                {selectedText.length > 100 ? `${selectedText.substring(0, 100)}...` : selectedText}
               </div>
-              <div className="mt-1 text-xs text-gray-500">
-                {selectedText.length} characters
+              <div className="mt-1 text-xs text-gray-500 flex items-center space-x-2">
+                <span>{selectedText.length} characters</span>
+                {selectedText.length > 5000 && (
+                  <span className="text-yellow-400">Large selection</span>
+                )}
               </div>
             </div>
             <Button
@@ -496,7 +571,10 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
             </Button>
           </div>
           <div className="mt-2 text-xs text-gray-400 text-center">
-            Copy text and paste in chat to request edits
+            {selectedText.length > 10000 ? 
+              "Large text selected - copying may take a moment" : 
+              "Copy text and paste in chat to request edits"
+            }
           </div>
         </div>
       )}

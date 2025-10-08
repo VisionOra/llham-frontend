@@ -240,6 +240,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               // Clear streaming state
               setCurrentStreamingMessage(null)
               setAgentMode(data.agent_mode || 'conversation')
+              setIsTyping(false)
               break
 
             case 'ai_message':
