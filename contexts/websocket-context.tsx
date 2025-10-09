@@ -387,6 +387,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 editData: data.edit_data,
                 showAcceptReject: data.show_accept_reject
               })
+              setIsTyping(false)
               break
 
             case 'edit_applied':
@@ -402,6 +403,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 sessionId: data.session_id,
                 isStreaming: false
               }])
+              setIsTyping(false)
               break
 
             case 'document_updated':
@@ -428,6 +430,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                   sessionId: data.session_id,
                   isStreaming: false
                 }])
+                setIsTyping(false)
               }
               break
 
@@ -440,6 +443,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 sessionId: data.session_id,
                 isStreaming: false
               }])
+              setIsTyping(false)
               break
 
             case 'edit_error':
@@ -450,6 +454,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 timestamp: new Date(),
                 sessionId: data.session_id
               }])
+              setIsTyping(false)
               break
 
             case 'proposal_error':

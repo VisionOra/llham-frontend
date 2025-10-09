@@ -70,6 +70,7 @@ export const ChatInterface = React.memo(function ChatInterface({
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set())
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const typingTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Use external selected text if provided, otherwise use internal state
   const currentSelectedText = externalSelectedText || selectedDocumentText
@@ -115,13 +116,29 @@ export const ChatInterface = React.memo(function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Clear user typing indicator when agent stops typing
   useEffect(() => {
-    // Only clear when agent was typing and now stopped
     if (isTyping === false && isUserTyping) {
       setIsUserTyping(false)
     }
   }, [isTyping])
+
+  useEffect(() => {
+    if (isUserTyping && isDocumentMode && currentDocument) {
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current)
+      }
+      
+      typingTimerRef.current = setTimeout(() => {
+        setIsUserTyping(false)
+      }, 4000)
+    }
+
+    return () => {
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current)
+      }
+    }
+  }, [isUserTyping, isDocumentMode, currentDocument])
 
   // Handle document generation callback
   useEffect(() => {
@@ -619,7 +636,7 @@ export const ChatInterface = React.memo(function ChatInterface({
                 <div className="inline-block p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] min-w-[200px]">
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-gray-300">
-                      Agent is typing
+                      ILHAM is typing
                     </span>
                     <div className="flex space-x-1">
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -774,3 +791,4 @@ export const ChatInterface = React.memo(function ChatInterface({
     </div>
   )
 })
+
