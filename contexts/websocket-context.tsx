@@ -61,12 +61,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   // Function to fetch generated document after workflow completion
   const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
     if (fetchedDocumentsRef.current.has(sessionId)) {
-      console.log('📄 Document already fetched for session:', sessionId)
       return
     }
 
     try {
-      console.log('📄 Fetching generated document for session:', sessionId)
       fetchedDocumentsRef.current.add(sessionId)
       const response = await fetch(`${API_BASE_URL}/documents/${sessionId}/`, {
         headers: {
@@ -78,7 +76,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         const documentData = await response.json()
-        console.log('📄 Document fetched successfully:', documentData)
         
         // Set the document in the context
         setCurrentDocument({
@@ -90,11 +87,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           author: documentData.created_by || 'AI Assistant'
         })
       } else {
-        console.error('📄 Failed to fetch document:', response.status)
         fetchedDocumentsRef.current.delete(sessionId)
       }
     } catch (error) {
-      console.error('📄 Error fetching generated document:', error)
       fetchedDocumentsRef.current.delete(sessionId)
     }
   }, [API_BASE_URL])
@@ -102,25 +97,21 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const connect = useCallback(() => {
     const token = TokenManager.getAccessToken()
     if (!token) {
-      console.error('No token available for WebSocket connection')
       return
     }
 
     // Prevent multiple connection attempts
     if (socket?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected, skipping')
       return
     }
 
     if (socket?.readyState === WebSocket.CONNECTING) {
-      console.log('WebSocket already connecting, skipping')
       return
     }
 
     // Prevent rapid connection attempts (debounce)
     const now = Date.now()
     if (now - lastConnectionAttempt.current < 2000) {
-      console.log('🔄 Connection attempt too soon, debouncing')
       return
     }
     lastConnectionAttempt.current = now
@@ -134,13 +125,11 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setConnectionStatus('connecting')
     const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || API_BASE_URL.replace(/^http/, "ws");
     const wsUrl = `${WS_BASE_URL}/ws/chat/?token=${token}`
-    console.log('[WebSocket] Connecting to:', wsUrl)
 
     try {
       const ws = new WebSocket(wsUrl)
       
       ws.onopen = () => {
-        console.log('✅ WebSocket connected')
         setConnectionStatus('connected')
         reconnectAttempts.current = 0
       }
@@ -148,25 +137,19 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          console.log('📥 WebSocket message received:', data)
           
           switch(data.type) {
             case 'connection_established':
-              console.log('🔗 Connection established')
               break
 
             case 'ai_message_chunk':
-              console.log('📥 AI message chunk received')
-              
-              // Create unique streaming ID for each new message
-              if (!currentMessageIdRef.current) {
+                            if (!currentMessageIdRef.current) {
                 messageCounter.current += 1
                 currentMessageIdRef.current = `streaming-${data.session_id}-${messageCounter.current}`
               }
               
               const streamingId = currentMessageIdRef.current
               
-              // Always use current_text (full text so far) for consistent display
               const currentContent = data.current_text || ''
               
               setMessages(prev => {
@@ -198,7 +181,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'ai_message_complete':
-              console.log('✅ AI message complete')
               
               const completionStreamingId = currentMessageIdRef.current
               
@@ -294,11 +276,25 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'title_generated':
-              console.log('📝 Title generated:', data.title)
+              break
+
+            case 'agent_started':
+              setCurrentStage(data.stage)
+              setProgress(0)
+              // Optionally update the current agent name if you want to display it
+              break
+
+            case 'agent_progress':
+              setCurrentStage(data.stage)
+              setProgress(data.progress)
+              break
+
+            case 'content_streaming':
+              setCurrentStage(data.stage)
+              setProgress(data.progress)
               break
 
             case 'proposal_generation_started':
-              console.log('🚀 Proposal generation started')
               setIsGeneratingProposal(true)
               setProgress(0)
               setAgentMode('proposal_generation')
@@ -314,13 +310,11 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'generation_progress':
-              console.log('📊 Generation progress:', data.stage, data.progress)
               setCurrentStage(data.stage)
               setProgress(data.progress)
               break
 
             case 'workflow_completed':
-              console.log('🎉 Workflow completed - fetching generated document')
               setIsGeneratingProposal(false)
               setCurrentStage(null)
               setProgress(100)
@@ -342,7 +336,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'proposal_completed':
-              console.log('🎉 Proposal completed')
               setIsGeneratingProposal(false)
               setCurrentStage(null)
               setProgress(100)
@@ -372,7 +365,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'edit_suggestion':
-              console.log('✏️ Edit suggestion received - adding to chat and document overlay')
               // Add to chat messages
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
@@ -398,10 +390,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'edit_applied':
-              console.log('✅ Edit applied successfully')
-              // Fetch the updated document since it's not included in the message
               if (data.session_id) {
-                console.log('📄 Fetching updated document after edit_applied')
                 fetchGeneratedDocument(data.session_id)
               }
               
@@ -417,7 +406,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
             case 'document_updated':
             case 'proposal_updated':
-              console.log('📄 Document/Proposal updated:', data)
               if (data.document) {
                 setCurrentDocument({
                   id: data.document_id || data.session_id,
@@ -444,7 +432,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'edit_rejected':
-              console.log('❌ Edit rejected')
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 type: 'ai',
@@ -456,7 +443,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'edit_error':
-              console.error('❌ Edit error:', data.error)
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 type: 'error',
@@ -467,7 +453,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'proposal_error':
-              console.error('❌ Proposal error:', data.error)
               setIsGeneratingProposal(false)
               setCurrentStage(null)
               setMessages(prev => [...prev, {
@@ -480,10 +465,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             default:
-              console.log('Unknown message type:', data.type, 'Data:', data)
-              // Check if this unknown message contains document updates
               if (data.document || data.proposal_content || data.html_content) {
-                console.log('📄 Found document content in unknown message type, updating document')
                 setCurrentDocument({
                   id: data.document_id || data.session_id || Date.now().toString(),
                   title: data.proposal_title || data.title || currentDocument?.title || 'Updated Document',
@@ -495,12 +477,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               }
           }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error)
         }
       }
 
       ws.onclose = (event) => {
-        console.log('🔌 WebSocket disconnected:', event.code)
         setConnectionStatus('disconnected')
         
         const reasons: { [key: number]: string } = {
@@ -511,16 +491,12 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         }
         
         const reason = reasons[event.code] || `Unknown error (${event.code})`
-        console.log('Disconnect reason:', reason)
         
         // Only attempt reconnection for certain error codes and if we have an active session
         if (event.code === 4001) {
-          console.log('🔑 Token expired, clearing tokens')
           TokenManager.clearTokens()
           setConnectionStatus('error')
         } else if (event.code !== 1000 && event.code !== 1001 && activeSessionId) {
-          // Only reconnect for unexpected disconnections and if session is active
-          console.log('🔄 Unexpected disconnection, attempting reconnection')
           handleReconnection()
         } else {
           console.log('🔌 Normal closure or no active session, not reconnecting')
@@ -528,13 +504,11 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       }
 
       ws.onerror = (error) => {
-        console.error('❌ WebSocket error:', error)
         setConnectionStatus('error')
       }
 
       setSocket(ws)
     } catch (error) {
-      console.error('Failed to create WebSocket connection:', error)
       setConnectionStatus('error')
     }
   }, [activeSessionId, API_BASE_URL])
@@ -542,7 +516,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const handleReconnection = useCallback(() => {
     // Only reconnect if we have an active session
     if (!activeSessionId) {
-      console.log('🔄 No active session, skipping reconnection')
       return
     }
 
@@ -550,7 +523,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       reconnectAttempts.current++
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000) // Exponential backoff, max 30s
       
-      console.log(`🔄 Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts}) in ${delay}ms`)
       
       setTimeout(() => {
         // Double-check we still have an active session before reconnecting
@@ -559,7 +531,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         }
       }, delay)
     } else {
-      console.error('❌ Max reconnection attempts reached')
       setConnectionStatus('error')
     }
   }, [connect, activeSessionId])
@@ -575,11 +546,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         document_context: documentContext
       }
       
-      console.log('📤 Sending message:', payload)
-      console.log('📤 Active Project ID:', activeProjectId)
       socket.send(JSON.stringify(payload))
       
-      // Add user message to chat - show the original input for display
       const displayMessage = documentContext ? `${documentContext} ${message}` : message
       
       setMessages(prev => [...prev, {
@@ -592,7 +560,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         isStreaming: false
       }])
     } else {
-      console.error('WebSocket not connected or no active session')
     }
   }, [socket, activeSessionId, activeProjectId])
 
@@ -605,7 +572,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         action: 'accept'
       }
       
-      console.log('✅ Accepting edit:', payload)
       socket.send(JSON.stringify(payload))
       
       // Clear the edit suggestion from overlay
@@ -622,7 +588,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         action: 'reject'
       }
       
-      console.log('❌ Rejecting edit:', payload)
       socket.send(JSON.stringify(payload))
       
       // Clear the edit suggestion from overlay
@@ -638,18 +603,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   }, [socket, sendMessage])
 
   const startSession = useCallback(async (sessionId: string, projectId: string | null = null) => {
-    console.log('🔌 Starting session:', sessionId, 'Project:', projectId)
-    console.log('🔌 ProjectId type:', typeof projectId, 'Value:', projectId)
-    
-    // If we already have a connection for this session, don't reconnect
-    if (activeSessionId === sessionId && socket?.readyState === WebSocket.OPEN) {
-      console.log('Session already active with connection, skipping')
+  
+        if (activeSessionId === sessionId && socket?.readyState === WebSocket.OPEN) {
       return
     }
 
     // Close existing connection if different session
     if (socket && activeSessionId !== sessionId) {
-      console.log('🔌 Closing existing connection for new session')
       socket.close(1000)
       // Wait a bit before creating new connection
       await new Promise(resolve => setTimeout(resolve, 100))
@@ -657,7 +617,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
     setActiveSessionId(sessionId)
     setActiveProjectId(projectId)
-    console.log('🔌 Set activeProjectId to:', projectId)
     
     // Clear state for new session
     setMessages([])
@@ -672,7 +631,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     // Load previous messages if this is an existing session (not a temp session)
     if (!sessionId.startsWith('temp-')) {
       try {
-        console.log('[WebSocket] Loading previous messages for session:', sessionId)
         const sessionData = await getSessionHistory(sessionId)
         
         // Convert conversation history to ChatMessage format
@@ -685,9 +643,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             sessionId: sessionId,
             projectId: projectId
           }))
-          
-          console.log('[WebSocket] Loaded', previousMessages.length, 'previous messages')
-            // Map edit_history to ChatMessage format and merge with previousMessages
+                      // Map edit_history to ChatMessage format and merge with previousMessages
             let editHistoryMessages: ChatMessage[] = [];
             if (sessionData.edit_history && Array.isArray(sessionData.edit_history)) {
               editHistoryMessages = sessionData.edit_history.map((edit: any, index: number) => ({
@@ -725,7 +681,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         }
         
       } catch (error) {
-        console.error('[WebSocket] Failed to load session history:', error)
         // Continue anyway, user can still chat
       }
     }
@@ -735,7 +690,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   }, [socket, activeSessionId, connect])
 
   const endSession = useCallback(() => {
-    console.log('🔌 Ending session')
     
     if (socket) {
       socket.close(1000)
@@ -775,7 +729,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   // Auto-send pending message when session is active and connected
   useEffect(() => {
     if (activeSessionId && pendingMessage && connectionStatus === 'connected' && socket?.readyState === WebSocket.OPEN) {
-      console.log('[WebSocket] Auto-sending pending message:', pendingMessage)
   sendMessage('chat_message', pendingMessage, [], null)
       setPendingMessage(null) // Clear after sending
     }
@@ -785,7 +738,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return () => {
       if (socket) {
-        console.log('🔌 Context cleanup: Closing WebSocket connection')
         socket.close(1000)
       }
       if (typingTimeoutRef.current) {

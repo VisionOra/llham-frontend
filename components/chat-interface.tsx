@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { FileUploadButton } from "@/components/file-upload"
-import { Send, User, Bot, FileText, Loader2, Sparkles, Shuffle, Check, X } from "lucide-react"
+import { Send, User, Bot, FileText, Loader2, Sparkles, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { useWebSocket } from "@/contexts/websocket-context"
 import AutoGrowTextarea from "./AutoGrowTextarea"
@@ -117,10 +117,8 @@ export const ChatInterface = React.memo(function ChatInterface({
 
   // Clear user typing indicator when agent stops typing
   useEffect(() => {
-    console.log('[ChatInterface] isTyping changed:', isTyping, 'isUserTyping:', isUserTyping)
     // Only clear when agent was typing and now stopped
     if (isTyping === false && isUserTyping) {
-      console.log('[ChatInterface] Clearing isUserTyping')
       setIsUserTyping(false)
     }
   }, [isTyping])
@@ -132,12 +130,8 @@ export const ChatInterface = React.memo(function ChatInterface({
     }
   }, [currentDocument, onDocumentGenerated])
 
-  // Start session when sessionId is provided - memoized to prevent excessive calls
-  // Session lifecycle is now managed by ChatPageContent. Removed duplicate startSession/endSession calls here.
 
-  // Handle text selection from document viewer
   const handleTextSelect = useCallback((selectedText: string, element: HTMLElement) => {
-    console.log('[ChatInterface] Text selected from document:', selectedText.substring(0, 100))
     setSelectedDocumentText(selectedText)
     // Call parent's onTextSelect if provided
     if (onTextSelect) {
@@ -145,52 +139,25 @@ export const ChatInterface = React.memo(function ChatInterface({
     }
   }, [onTextSelect])
 
-  // Remove auto-send functionality - users will manually paste and request edits
-
-  // Memoize helper functions
   const detectPastedContent = useCallback((message: string) => {
-    // Look for specific document patterns that indicate pasted content
     const hasDocumentPatterns = /Essential Features|Advanced Features|Core Features|Project Planning|Technical Specification|Must-Have|Nice-to-Have|Business Analysis|Resource Allocation|Architecture Considerations|Integration Requirements|Security and Compliance|Unique Differentiators|Technology Stack|Frontend|Backend|Database|Infrastructure|Microservices|Scalability|Performance|Authentication|User Management|Responsive Design|Export and Deployment|Target Audience|Small to Medium|Startups|Enterprise|Non-Technical|Developers|Similar Products|Market Research|Recommendation|Note:|API configuration|comprehensive market research|Direct competitors|Similar apps|Market analysis reports|Industry benchmarks|product positioning|feature prioritization|online tools|market trends|consumer behavior|industry forums/i.test(message)
     const hasColons = message.includes(':')
     const hasEditKeywords = /\b(make it|modify|change|edit|improve|update|rewrite|concise|enhance|fix|adjust|refine|optimize|enhance)\b/i.test(message)
-    const hasLongContent = message.length > 100 // Increased threshold for better detection
+    const hasLongContent = message.length > 100
     const hasStructuredContent = message.includes('•') || message.includes('-') || message.includes('1.') || message.includes('2.')
     
-    console.log('[ChatInterface] Detection analysis:', {
-      message: message.substring(0, 100),
-      hasDocumentPatterns,
-      hasColons,
-      hasEditKeywords,
-      hasLongContent,
-      hasStructuredContent,
-      result: (hasDocumentPatterns && (hasColons || hasEditKeywords)) || (hasLongContent && hasStructuredContent)
-    })
-    
-    // Detect as pasted if it has document patterns AND (colons OR edit keywords)
-    // OR if it's long content with structured formatting AND has edit keywords
-    return (hasDocumentPatterns && (hasColons || hasEditKeywords)) || (hasLongContent && hasStructuredContent && hasEditKeywords)
+    return false
   }, [])
 
   const formatMessageForDisplay = useCallback((message: string): FormattedMessage => {
-    console.log('[ChatInterface] Analyzing message:', message)
-    console.log('[ChatInterface] Is pasted content:', detectPastedContent(message))
-    
     if (detectPastedContent(message)) {
-      // Try to separate pasted content from user request
       const editKeywords = /\b(make it|modify|change|edit|improve|update|rewrite|concise|enhance|fix|adjust|refine|optimize)\b/i
       const match = message.match(editKeywords)
       
       if (match) {
-        // Split at the edit keyword
         const splitIndex = message.toLowerCase().indexOf(match[0].toLowerCase())
         const pastedContent = message.substring(0, splitIndex).trim()
         const userRequest = message.substring(splitIndex).trim()
-        
-        console.log('[ChatInterface] Split detected:', {
-          pastedContent,
-          userRequest,
-          splitAt: match[0]
-        })
         
         return {
           isPastedContent: true,
@@ -199,8 +166,6 @@ export const ChatInterface = React.memo(function ChatInterface({
           preview: pastedContent.length > 60 ? pastedContent.substring(0, 60) + '...' : pastedContent
         }
       } else {
-        // No clear user request, treat whole message as pasted content
-        console.log('[ChatInterface] No edit keyword found, treating as pasted content')
         return {
           isPastedContent: true,
           pastedText: message,
@@ -210,8 +175,6 @@ export const ChatInterface = React.memo(function ChatInterface({
       }
     }
     
-    // For simple messages like "enhance it", treat as regular message
-    console.log('[ChatInterface] Treating as regular message')
     return {
       isPastedContent: false,
       originalMessage: message
@@ -221,7 +184,6 @@ export const ChatInterface = React.memo(function ChatInterface({
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim()) return;
 
-    // Handle welcome mode differently - don't require WebSocket connection
     if (isWelcomeMode) {
       onNewChat(inputValue);
       setInputValue("");
@@ -230,7 +192,6 @@ export const ChatInterface = React.memo(function ChatInterface({
     }
 
     if (connectionStatus !== 'connected') {
-      console.warn('Cannot send message: WebSocket not connected');
       return;
     }
 
@@ -249,33 +210,14 @@ export const ChatInterface = React.memo(function ChatInterface({
 
     setInputValue("");
     setUploadedFiles([]);
-    
-    // Show typing indicator immediately when user sends message
-    console.log('[ChatInterface] Setting isUserTyping to true')
     setIsUserTyping(true);
 
-    // Determine type
     const type = pdfFilesToSend.length > 0 ? 'pdf_upload' : 'chat_message';
 
-    // Send message with correct type and pdf_files
     if (currentSelectedText && currentSelectedText.trim()) {
-      const contextPreview = typeof currentSelectedText === 'string' ?
-        (currentSelectedText.length > 100 ? currentSelectedText.substring(0, 100) + '...' : currentSelectedText) :
-        String(currentSelectedText);
-      console.log('[ChatInterface] Sending message with document context:', {
-        message: inputText,
-        document_context: contextPreview,
-        fullContextLength: currentSelectedText.length,
-        pdfFilesToSend
-      });
       sendMessage(type, inputText, pdfFilesToSend, currentSelectedText);
       clearSelectedText();
     } else if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText) {
-      console.log('[ChatInterface] Sending edit request:', {
-        message: formatted.userRequest,
-        document_context: formatted.pastedText,
-        pdfFilesToSend
-      });
       sendMessage(type, formatted.userRequest, pdfFilesToSend, formatted.pastedText);
     } else {
       sendMessage(type, inputText, pdfFilesToSend, null);
@@ -283,12 +225,8 @@ export const ChatInterface = React.memo(function ChatInterface({
   }, [inputValue, isWelcomeMode, onNewChat, connectionStatus, formatMessageForDisplay, sendMessage, currentSelectedText, clearSelectedText, uploadedFiles])
 
   const handleFileUploaded = useCallback((file: UploadedFile) => {
-    console.log('File uploaded:', file.name);
-    
-    // Add file to uploaded files list but don't auto-send
     setUploadedFiles(prev => [...prev, file]);
     
-    // Create a document/file message in chat to show the uploaded document
     const fileMessage: Message = {
       id: `file-${file.id}`,
       type: "file",
@@ -298,13 +236,6 @@ export const ChatInterface = React.memo(function ChatInterface({
       fileSize: file.size
     };
     
-    // Add the file message to chat (if using WebSocket context)
-    // if (sendMessage) {
-    //   // Don't send via WebSocket, just display locally
-    //   // We'll need to add this to local messages state or WebSocket context
-    // }
-    
-    // Optionally pre-populate the input with a suggestion, but don't send
     if (!inputValue.trim()) {
       setInputValue(`Please analyze the uploaded document and help me with it.`);
     }
@@ -437,8 +368,8 @@ export const ChatInterface = React.memo(function ChatInterface({
           {messages.map((message) => (
             <div key={message.id} className="space-y-2">
               <div
-                className={`flex items-start space-x-3 ${
-                  message.type === "user" ? "flex-row-reverse space-x-reverse" : ""
+                className={`flex items-start ${
+                  message.type === "user" ? "flex-row-reverse space-x-reverse" : "space-x-3"
                 }`}
               >
                 {/* Avatar */}
@@ -461,9 +392,9 @@ export const ChatInterface = React.memo(function ChatInterface({
                 </div>
 
                 {/* Message Content */}
-                <div className={`flex-1 max-w-[80%] text-left break-words`}>
+                <div className={`flex-1 max-w-[75%] ${message.type === "user" ? "text-right" : "text-left"} break-words me-2`}>
                   <div
-                    className={`inline-block p-3 rounded-lg max-w-full ${
+                    className={`inline-block p-3 rounded-lg max-w-full text-left ${
                       message.type === "user"
                         ? "bg-green-700 text-white"
                         : message.type === "ai"
@@ -497,41 +428,41 @@ export const ChatInterface = React.memo(function ChatInterface({
                               ? formatted.pastedText.substring(0, 200) + '...'
                               : formatted.pastedText
                             
-                            return (
-                              <div className="space-y-2">
-                                {/* User's request */}
-                                <p className="text-sm font-medium">{formatted.userRequest}</p>
-                                {/* Pasted content preview - Cursor style */}
-                                <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                    <span className="text-xs font-medium text-blue-200">Pasted Text</span>
-                                  </div>
-                                  <p className="text-xs text-gray-300 font-mono">
-                                    {displayPreview}
-                                  </p>
-                                  <p className="text-xs text-gray-400 mt-1">
-                                    {formatted.pastedText.length} characters
-                                  </p>
-                                  {shouldTruncate && (
-                                    <button
-                                      onClick={() => toggleMessageExpansion(message.id)}
-                                      className="mt-2 text-xs text-blue-300 hover:text-blue-200 underline"
-                                    >
-                                      Read more
-                                    </button>
-                                  )}
-                                  {isExpanded && isLongPastedText && (
-                                    <button
-                                      onClick={() => toggleMessageExpansion(message.id)}
-                                      className="mt-2 text-xs text-blue-300 hover:text-blue-200 underline"
-                                    >
-                                      Show less
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )
+                             return (
+                               <div className="space-y-2 text-left">
+                                 {/* User's request */}
+                                 <p className="text-sm text-left font-medium">{formatted.userRequest}</p>
+                                 {/* Pasted content preview - Cursor style */}
+                                 <div className="bg-black/20 border border-white/20 rounded p-2 mt-2">
+                                   <div className="flex items-center space-x-2 mb-1">
+                                     <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                     <span className="text-xs font-medium text-blue-200">Pasted Text</span>
+                                   </div>
+                                   <p className="text-xs text-gray-300 font-mono whitespace-pre-wrap">
+                                     {displayPreview}
+                                   </p>
+                                   <p className="text-xs text-gray-400 mt-1">
+                                     {formatted.pastedText.length} characters
+                                   </p>
+                                   {shouldTruncate && (
+                                     <button
+                                       onClick={() => toggleMessageExpansion(message.id)}
+                                       className="mt-2 text-xs text-blue-300 hover:text-blue-200 underline"
+                                     >
+                                       Read more
+                                     </button>
+                                   )}
+                                   {isExpanded && isLongPastedText && (
+                                     <button
+                                       onClick={() => toggleMessageExpansion(message.id)}
+                                       className="mt-2 text-xs text-blue-300 hover:text-blue-200 underline"
+                                     >
+                                       Show less
+                                     </button>
+                                   )}
+                                 </div>
+                               </div>
+                             )
                           })() : (() => {
                             const isLongMessage = message.content.length > 500
                             const isExpanded = expandedMessages.has(message.id)
@@ -678,7 +609,6 @@ export const ChatInterface = React.memo(function ChatInterface({
           {/* Agent typing indicator */}
           {(() => {
             const shouldShow = (isTyping || isUserTyping) && !isGeneratingProposal
-            console.log('[ChatInterface] Typing indicator check:', { isTyping, isUserTyping, isGeneratingProposal, shouldShow })
             return shouldShow
           })() && (
             <div className="flex items-start space-x-3">
@@ -838,15 +768,7 @@ export const ChatInterface = React.memo(function ChatInterface({
               ? "Select text in document and write your querry here"
               : "Press Enter to send, Shift+Enter for new line • Upload PDF/Word files"}
           </p>
-          
-          {/* <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'connected' ? 'bg-green-500' : 
-              connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 
-              'bg-red-500'
-            }`} />
-            <span className="text-xs text-gray-500 capitalize">{connectionStatus}</span>
-          </div> */}
+         
         </div>
       </div>
     </div>

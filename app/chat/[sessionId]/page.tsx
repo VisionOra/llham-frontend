@@ -22,6 +22,7 @@ function ChatPageContent() {
     currentDocument: wsCurrentDocument, 
     latestEditSuggestion,
     pendingMessage,
+    setPendingMessage,
     acceptEdit, 
     rejectEdit, 
     startSession, 
@@ -31,37 +32,28 @@ function ChatPageContent() {
     connectionStatus 
   } = useWebSocket()
 
-  // Chat panel resize state
-  const [chatWidth, setChatWidth] = useState(350) // Chat width in pixels
+  const [chatWidth, setChatWidth] = useState(450) // Chat width in pixels
   const [isResizing, setIsResizing] = useState(false)
 
-  // Sidebar collapsed state and width
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const sidebarWidth = sidebarCollapsed ? 64 : 256
 
-  // Calculate document width: total width - sidebar - chat width
   const documentWidth = `calc(100vw - ${sidebarWidth}px - ${chatWidth}px)`
 
-  // Local state for document management (like in old code)
   const [hasDocument, setHasDocument] = useState(false)
   const [currentDocument, setCurrentDocument] = useState<any>(null)
   const [loadingDocument, setLoadingDocument] = useState(false)
 
-  // State for text selection
   const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
 
-  // Track loaded sessions to prevent recursive calls
   const loadedSessionsRef = useRef<Set<string>>(new Set())
 
-  // Extract sessionId from params
   const sessionIdParam = params.sessionId
   const sessionId = sessionIdParam === 'new' ? null : 
                    Array.isArray(sessionIdParam) ? sessionIdParam[0] : sessionIdParam
 
-  // Extract projectId from search params
   const projectId = searchParams.get('project')
 
-  // Handle chat panel resizing
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return
@@ -70,7 +62,6 @@ function ChatPageContent() {
       const viewportWidth = window.innerWidth
       const mouseX = e.clientX
 
-      // Calculate new chat width (min 250px, max 50% of viewport)
       const newWidth = Math.min(viewportWidth * 0.5, Math.max(250, viewportWidth - mouseX))
       setChatWidth(newWidth)
     }
@@ -101,7 +92,6 @@ function ChatPageContent() {
   // Start session when sessionId changes (like in old code)
   useEffect(() => {
     if (sessionId && sessionId !== activeSessionId) {
-      console.log("[Chat] Starting session:", sessionId, "Project:", projectId)
       startSession(sessionId, projectId)
       
       // Only load document if we haven't loaded it for this session yet
@@ -109,7 +99,6 @@ function ChatPageContent() {
         loadSessionDocument(sessionId)
       }
     } else if (!sessionId && activeSessionId) {
-      console.log("[Chat] Ending session")
       endSession()
       setHasDocument(false)
       setCurrentDocument(null)
@@ -121,40 +110,29 @@ function ChatPageContent() {
   // Load document for session (using exact logic from old working code)
   const loadSessionDocument = useCallback(async (sessionId: string) => {
     if (loadingDocument || loadedSessionsRef.current.has(sessionId)) {
-      console.log("[Chat] Already loading document or already loaded, skipping")
       return
     }
 
     try {
       setLoadingDocument(true)
       loadedSessionsRef.current.add(sessionId)
-      console.log("[Chat] Loading document for session:", sessionId)
       
       const documentContent = await getDocumentContent(sessionId)
-      console.log("[Chat] Raw API response:", documentContent)
-      console.log("[Chat] Response type:", typeof documentContent)
-      console.log("[Chat] Response keys:", documentContent ? Object.keys(documentContent) : 'null')
       
-      // Check if the API response indicates "no document" vs "document with content"
       if (!documentContent || documentContent.error || documentContent.message) {
-        console.log("[Chat] No document for this session - API returned error or empty")
         setHasDocument(false)
         setCurrentDocument(null)
         setLoadingDocument(false)
         return
       }
       
-      // Check multiple possible content fields (exact from old working code)
-      // Handle case where document field is an object with nested content
       let content
       if (documentContent?.document && typeof documentContent.document === 'object') {
-        // Document is an object, look for content fields within it
         content = documentContent.document.content || 
                  documentContent.document.html_content || 
                  documentContent.document.body ||
                  documentContent.document.document
       } else {
-        // Document is a string or use other top-level fields
         content = documentContent?.document || 
                  documentContent?.content || 
                  documentContent?.html_content || 
@@ -162,29 +140,11 @@ function ChatPageContent() {
                  documentContent?.proposal_content
       }
       
-      console.log("[Chat] Content field analysis:", {
-        hasDocument: !!documentContent?.document,
-        documentType: typeof documentContent?.document,
-        documentKeys: documentContent?.document && typeof documentContent?.document === 'object' ? Object.keys(documentContent.document) : 'not object',
-        hasContent: !!documentContent?.content,
-        hasHtmlContent: !!documentContent?.html_content,
-        hasBody: !!documentContent?.body,
-        hasProposalContent: !!documentContent?.proposal_content,
-        finalContent: !!content,
-        contentType: typeof content,
-        contentLength: content ? content.length : 0
-      })
+           const hasActualContent = content && typeof content === 'string' && content.trim().length > 0
       
-      // Only show document viewer if there's actual content
-      const hasActualContent = content && typeof content === 'string' && content.trim().length > 0
-      
-      // Check if session has a document with content (from old working code)
       if (hasActualContent) {
-        console.log("[Chat] Session has document with content - showing document center + chat sidebar")
-        console.log("[Chat] Document content length:", content.length)
         setHasDocument(true)
         
-        // Create a properly formatted document object for the DocumentViewer (exact from old working code)
         const documentForViewer = {
           id: documentContent.id || sessionId,
           title: documentContent.title || documentContent.proposal_title || 'Document',
@@ -195,21 +155,14 @@ function ChatPageContent() {
         }
         
         setCurrentDocument(documentForViewer)
-        console.log("[Chat] Document set successfully:", documentForViewer.title)
       } else {
-        console.log("[Chat] Session has no document content - showing chat center")
         setHasDocument(false)
         setCurrentDocument(null)
       }
     } catch (error) {
-      console.error("[Chat] Failed to load document:", error)
       
-      // Remove from loaded sessions so it can be retried
       loadedSessionsRef.current.delete(sessionId)
-      
-      // Only show error if the API returned something indicating a document should exist
-      // Don't show document viewer for sessions that simply don't have documents
-      console.log("[Chat] Document loading failed - showing chat only mode")
+     
       setHasDocument(false)
       setCurrentDocument(null)
     } finally {
@@ -221,11 +174,8 @@ function ChatPageContent() {
   const refreshDocumentContent = useCallback(async () => {
     if (!sessionId || !hasDocument) return
     
-    console.log("[Chat] Refreshing document content for session:", sessionId)
     try {
-      const documentContent = await getDocumentContent(sessionId)
-      console.log("[Chat] Refreshed document content:", documentContent)
-      
+      const documentContent = await getDocumentContent(sessionId)      
       const refreshedDocument = {
         id: documentContent.id || sessionId,
         title: documentContent.title || currentDocument?.title || 'Document',
@@ -236,19 +186,14 @@ function ChatPageContent() {
       }
       
       setCurrentDocument(refreshedDocument)
-      console.log("[Chat] Document refreshed successfully")
     } catch (error) {
-      console.error("[Chat] Failed to refresh document:", error)
     }
   }, [sessionId, hasDocument])
 
-  // Watch for new AI messages and refresh document if in document mode (exact from old working code)
   useEffect(() => {
     if (hasDocument && wsMessages.length > 0) {
       const lastMessage = wsMessages[wsMessages.length - 1]
       if (lastMessage.type === 'ai' && !lastMessage.isStreaming) {
-        console.log("[Chat] AI message completed, refreshing document")
-        // Small delay to ensure backend has processed the update (exact from old working code)
         setTimeout(() => {
           refreshDocumentContent()
         }, 1000)
@@ -256,48 +201,27 @@ function ChatPageContent() {
     }
   }, [wsMessages, hasDocument, refreshDocumentContent])
 
-  // Use WebSocket document if available, otherwise use local document (exact from old working code)
   const documentToDisplay = wsCurrentDocument || currentDocument
 
-  // Watch for WebSocket document generation and switch layout (exact from old working code)
   useEffect(() => {
     if (wsCurrentDocument && !hasDocument) {
-      console.log('[Chat] WebSocket document generated, switching to document view')
       setHasDocument(true)
     }
   }, [wsCurrentDocument, hasDocument])
 
-  // Watch for WebSocket document updates and refresh local document (exact from old working code)
   useEffect(() => {
     if (wsCurrentDocument && hasDocument) {
-      console.log('[Chat] WebSocket document updated, refreshing document viewer')
-      console.log('[Chat] New document content:', wsCurrentDocument)
-      // Force update by updating the local currentDocument (exact from old working code)
       setCurrentDocument(wsCurrentDocument)
     }
   }, [wsCurrentDocument, hasDocument])
 
-  // Debug: Log document changes (exact from old working code)
-  useEffect(() => {
-    console.log('[Chat] Document state changed:')
-    console.log('  - wsCurrentDocument:', !!wsCurrentDocument, wsCurrentDocument?.id)
-    console.log('  - currentDocument:', !!currentDocument, currentDocument?.id)
-    console.log('  - documentToDisplay:', !!documentToDisplay, documentToDisplay?.id)
-  }, [wsCurrentDocument, currentDocument, documentToDisplay])
 
-  // Debug logging for document state
-  useEffect(() => {
-    console.log('[Chat] Document state debug:', {
-      hasDocument,
-      currentDocument: !!currentDocument,
-      wsCurrentDocument: !!wsCurrentDocument,
-      documentToDisplay: !!documentToDisplay
-    })
-  }, [hasDocument, currentDocument, wsCurrentDocument, documentToDisplay])
+
+
 
   const handleNewChat = (message: string) => {
-    // Let ChatInterface handle session creation and navigation
-    console.log("[Chat] New chat:", message)
+    // This should not be called from chat page in welcome mode
+    // Welcome mode should only be on dashboard
   }
 
   const handleBackToDashboard = () => {
@@ -321,12 +245,7 @@ function ChatPageContent() {
   }
 
   const handleTextSelect = (selectedText: string, element: HTMLElement) => {
-    console.log("[Chat] Text selected in document:", {
-      text: selectedText,
-      length: selectedText.length,
-      preview: selectedText.substring(0, 100) + (selectedText.length > 100 ? '...' : ''),
-      type: typeof selectedText
-    })
+   
     setSelectedDocumentText(selectedText)
   }
 
@@ -335,7 +254,6 @@ function ChatPageContent() {
   }
 
   const handleDocumentGenerated = (document: any) => {
-    console.log("[Chat] Document generated via WebSocket:", document)
     setCurrentDocument(document)
     setHasDocument(true)
   }
@@ -356,7 +274,6 @@ function ChatPageContent() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-full min-h-0">
-        {/* Tabs: only show on md and below, and only if document exists, and always at the top */}
         {hasDocument && currentDocument && (
           <div className="md:hidden w-full bg-[#18181b] border-b border-[#23232a] flex z-20">
             <button
@@ -374,9 +291,7 @@ function ChatPageContent() {
           </div>
         )}
 
-        {/* Responsive content: tabs on md/mobile, split on desktop */}
         <div className="flex-1 flex h-full min-h-0">
-          {/* Desktop: split view, md/mobile: tab view */}
           {hasDocument && currentDocument ? (
             <>
               {/* Document Panel */}
@@ -428,7 +343,7 @@ function ChatPageContent() {
                   projectId={projectId}
                   onNewChat={handleNewChat}
                   isDocumentMode={true}
-                  isWelcomeMode={sessionId === null}
+                  isWelcomeMode={false}
                   onDocumentGenerated={handleDocumentGenerated}
                   onTextSelect={handleTextSelect}
                   selectedDocumentText={selectedDocumentText}
@@ -449,7 +364,7 @@ function ChatPageContent() {
                   projectId={projectId}
                   onNewChat={handleNewChat}
                   isDocumentMode={false}
-                  isWelcomeMode={sessionId === null}
+                  isWelcomeMode={false}
                   onDocumentGenerated={handleDocumentGenerated}
                   selectedDocumentText=""
                   onClearSelectedText={handleClearSelectedText}
