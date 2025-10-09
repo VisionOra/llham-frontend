@@ -440,16 +440,12 @@ export interface CreateProjectWithSessionResponse {
 
 export async function createProjectWithSession(data: CreateProjectWithSessionRequest): Promise<CreateProjectWithSessionResponse> {
   try {
-    console.log('[API] Creating project with session:', data);
     const response = await projectApi.post<CreateProjectWithSessionResponse>(`/api/proposals/projects/create-with-session/`, data);
-    console.log('[API] Create project with session response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('[API] Create project with session error:', error);
     
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      console.log('[API] Redirect detected, trying direct backend call for create project with session...');
       try {
         const directResponse = await axios.post<CreateProjectWithSessionResponse>(`${API_BASE_URL}/api/proposals/projects/create-with-session/`, data, {
           headers: {
@@ -460,10 +456,8 @@ export async function createProjectWithSession(data: CreateProjectWithSessionReq
           },
           timeout: 10000,
         });
-        console.log('[API] Direct create project with session call successful:', directResponse.data);
         return directResponse.data;
       } catch (directError) {
-        console.error('[API] Direct create project with session call also failed:', directError);
         throw new Error("Failed to create project with session. Please try again.");
       }
     }
@@ -478,16 +472,12 @@ export async function createProjectWithSession(data: CreateProjectWithSessionReq
 
 export async function getDocumentContent(sessionId: string): Promise<any> {
   try {
-    console.log('[API] Fetching document content for session:', sessionId);
     const response = await projectApi.get(`/api/proposals/sessions/${sessionId}`);
-    console.log('[API] Document content response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('[API] Document content error:', error);
     
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      console.log('[API] Redirect detected, trying direct backend call for document...');
       try {
         const directResponse = await axios.get(`${API_BASE_URL}/api/proposals/sessions/${sessionId}`, {
           headers: {
@@ -498,10 +488,8 @@ export async function getDocumentContent(sessionId: string): Promise<any> {
           },
           timeout: 10000,
         });
-        console.log('[API] Direct document call successful:', directResponse.data);
         return directResponse.data;
       } catch (directError) {
-        console.error('[API] Direct document call also failed:', directError);
         throw new Error("Failed to load document content. Please try again.");
       }
     }
@@ -515,16 +503,12 @@ export async function getDocumentContent(sessionId: string): Promise<any> {
 
 export async function getSessionHistory(sessionId: string): Promise<any> {
   try {
-    console.log('[API] Fetching session history for:', sessionId);
     const response = await projectApi.post(`/api/proposals/sessions/${sessionId}/resume/`);
-    console.log('[API] Session history response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('[API] Session history error:', error);
     
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      console.log('[API] Redirect detected, trying direct backend call for session history...');
       try {
         const directResponse = await axios.post(`${API_BASE_URL}/api/proposals/sessions/${sessionId}/resume/`, {}, {
           headers: {
@@ -535,10 +519,8 @@ export async function getSessionHistory(sessionId: string): Promise<any> {
           },
           timeout: 10000,
         });
-        console.log('[API] Direct session history call successful:', directResponse.data);
         return directResponse.data;
       } catch (directError) {
-        console.error('[API] Direct session history call also failed:', directError);
         throw new Error("Failed to load session history. Please try again.");
       }
     }
@@ -556,16 +538,12 @@ export interface CreateSessionRequest {
 
 export async function createSession(sessionData: CreateSessionRequest): Promise<any> {
   try {
-    console.log('[API] Creating new session for project:', sessionData.project_id);
     const response = await projectApi.post('/api/proposals/sessions/', sessionData);
-    console.log('[API] Session created successfully:', response.data);
     return response.data;
   } catch (error) {
-    console.error('[API] Session creation error:', error);
     
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      console.log('[API] Redirect detected, trying direct backend call for session creation...');
       try {
         const directResponse = await axios.post(`${API_BASE_URL}/api/proposals/sessions/`, sessionData, {
           headers: {
@@ -576,10 +554,8 @@ export async function createSession(sessionData: CreateSessionRequest): Promise<
           },
           timeout: 10000,
         });
-        console.log('[API] Direct session creation call successful:', directResponse.data);
         return directResponse.data;
       } catch (directError) {
-        console.error('[API] Direct session creation call also failed:', directError);
         throw new Error("Failed to create session. Please try again.");
       }
     }
@@ -605,7 +581,6 @@ export async function deleteProject(projectId: string): Promise<void> {
       }
     });
   } catch (error) {
-    console.error('Delete project error:', error);
     if (error instanceof AxiosError) {
       throw new Error(error.response?.data?.message || 'Failed to delete project');
     }
@@ -627,7 +602,6 @@ export async function deleteSession(sessionId: string): Promise<void> {
       }
     });
   } catch (error) {
-    console.error('Delete session error:', error);
     if (error instanceof AxiosError) {
       throw new Error(error.response?.data?.message || 'Failed to delete session');
     }

@@ -47,6 +47,16 @@ export function FileUpload({
     return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
   }
 
+  const formatFileType = (type: string) => {
+    if (!type) return 'Unknown'
+    if (type.includes('pdf')) return 'PDF Document'
+    if (type.includes('word')) return 'Word Document'
+    if (type.includes('doc')) return 'Word Document'
+    if (type.includes('text')) return 'Text File'
+    const parts = type.split('/')
+    return parts[parts.length - 1].toUpperCase()
+  }
+
   const getFileIcon = (type: string) => {
     if (type.includes("pdf")) return <FileText className="w-4 h-4 text-red-400" />
     if (type.includes("doc")) return <FileText className="w-4 h-4 text-blue-400" />
@@ -278,6 +288,16 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
     return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
   }
 
+  const formatFileType = (type: string) => {
+    if (!type) return 'Unknown'
+    if (type.includes('pdf')) return 'PDF Document'
+    if (type.includes('word')) return 'Word Document'
+    if (type.includes('doc')) return 'Word Document'
+    if (type.includes('text')) return 'Text File'
+    const parts = type.split('/')
+    return parts[parts.length - 1].toUpperCase()
+  }
+
   const processAndUploadFile = async (file: File) => {
     // Process file to base64 before creating UploadedFile
     const reader = new FileReader();
@@ -390,7 +410,7 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
           </DialogHeader>
           
           {pendingFile && (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 overflow-hidden">
               <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4 space-y-3 overflow-hidden">
                 <div className="flex items-start gap-3 min-w-0 w-full">
                   <FileText className="w-8 h-8 text-blue-400 flex-shrink-0 mt-1" />
@@ -409,7 +429,7 @@ export function FileUploadButton({ onFileUploaded }: { onFileUploaded: (file: Up
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-gray-500 flex-shrink-0">Type:</span>
-                        <span className="font-medium text-blue-400 truncate">{pendingFile.type || 'Unknown'}</span>
+                        <span className="font-medium text-blue-400">{formatFileType(pendingFile.type)}</span>
                       </div>
                     </div>
                   </div>

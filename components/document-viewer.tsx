@@ -47,20 +47,15 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   const [copied, setCopied] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  // Process document content to make text selection more precise
   const processedContent = (() => {
     let rawContent = null
     const doc = document as any
     
-    // Try different possible content locations based on document structure
     if (doc?.content && typeof doc.content === 'string') {
-      // Case 1: Direct HTML content in document.content (first load)
       rawContent = doc.content
     } else if (doc?.document && typeof doc.document === 'string') {
-      // Case 2: HTML content in document.document property (after updates)
       rawContent = doc.document
     } else if (doc?.content && typeof doc.content === 'object') {
-      // Case 3: Content is an object, try to extract HTML
       const content = doc.content as any
       rawContent = content.html || 
                   content.content || 
@@ -69,25 +64,20 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
                   content.text || 
                   content.data
     } else if (typeof doc === 'string') {
-      // Case 4: The entire document might be a string
       rawContent = doc
     }
     
     if (!rawContent) return ''
     
-    // Handle different content types
     let contentString = ''
     if (typeof rawContent === 'string') {
       contentString = rawContent
     } else {
-      // Fallback for other types
       contentString = String(rawContent)
     }
     
-    // Ensure we have a string and apply regex replacements for better text selection
     if (contentString && typeof contentString === 'string') {
       return contentString
-        // Add word boundaries to make selection more precise
         .replace(/(<h[1-6][^>]*>)(.*?)(<\/h[1-6]>)/g, '$1<span class="selectable-text">$2</span>$3')
         .replace(/(<p[^>]*>)(.*?)(<\/p>)/g, '$1<span class="selectable-text">$2</span>$3')
         .replace(/(<li[^>]*>)(.*?)(<\/li>)/g, '$1<span class="selectable-text">$2</span>$3')
@@ -98,19 +88,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
     return contentString || ''
 
   })()
-    console.log("[DocumentViewer] Processed content:", { processedContent })
-
-  useEffect(() => {
-    console.log("[DocumentViewer] Received document:", {
-      document: document,
-      hasContent: !!document?.content,
-      contentType: typeof document?.content,
-      contentKeys: document?.content && typeof document.content === 'object' ? Object.keys(document.content) : [],
-      contentValue: document?.content,
-      processedContentLength: processedContent?.length || 0,
-      processedContentPreview: typeof processedContent === 'string' ? processedContent.substring(0, 200) : String(processedContent).substring(0, 200) || 'No content'
-    })
-  }, [document, processedContent])
 
   useEffect(() => {
     let isSelecting = false
@@ -119,13 +96,11 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
     const handleMouseDown = (e: MouseEvent) => {
       if (contentRef.current?.contains(e.target as Node)) {
         isSelecting = true
-        // Clear any existing selection and state
         window.getSelection()?.removeAllRanges()
         setSelectedText("")
         setIsSelecting(false)
         setCopied(false)
         
-        // Clear any pending selection timeout
         if (selectionTimeout) {
           clearTimeout(selectionTimeout)
           selectionTimeout = null
@@ -138,47 +113,36 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
       
       isSelecting = false
       
-      // Clear any existing timeout
       if (selectionTimeout) {
         clearTimeout(selectionTimeout)
       }
       
-      // Get the current selection after mouse up with a longer delay for better reliability
       selectionTimeout = setTimeout(() => {
         const selection = window.getSelection()
         if (selection && !selection.isCollapsed) {
           const text = selection.toString().trim()
           
-          // More robust validation
           if (text && text.length > 0) {
-            console.log('[DocumentViewer] Selected text:', text.length, 'characters')
             setSelectedText(text)
             setIsSelecting(true)
             setCopied(false)
             
-            // Notify parent component about text selection
             if (onTextSelect && contentRef.current) {
               onTextSelect(text, contentRef.current)
             }
-          } else {
-            console.log('[DocumentViewer] No valid text selected')
           }
-        } else {
-          console.log('[DocumentViewer] No selection found')
         }
         selectionTimeout = null
-      }, 50) // Increased timeout for better reliability
+      }, 50)
     }
 
-    // Add selection change listener for more reliable detection
     const handleSelectionChange = () => {
-      if (isSelecting) return // Don't interfere with mouse selection
+      if (isSelecting) return
       
       const selection = window.getSelection()
       if (selection && !selection.isCollapsed && contentRef.current?.contains(selection.anchorNode)) {
         const text = selection.toString().trim()
         if (text && text.length > 0) {
-          console.log('[DocumentViewer] Selection changed:', text.length, 'characters')
           setSelectedText(text)
           setIsSelecting(true)
           setCopied(false)
@@ -190,16 +154,13 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
       }
     }
 
-    // Handle keyboard selection (Ctrl+A, Shift+Arrow keys, etc.)
     const handleKeyUp = (e: KeyboardEvent) => {
       if (contentRef.current?.contains(e.target as Node)) {
-        // Small delay to ensure selection is complete
         setTimeout(() => {
           const selection = window.getSelection()
           if (selection && !selection.isCollapsed) {
             const text = selection.toString().trim()
             if (text && text.length > 0) {
-              console.log('[DocumentViewer] Keyboard selection:', text.length, 'characters')
               setSelectedText(text)
               setIsSelecting(true)
               setCopied(false)
@@ -236,7 +197,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
 
   const handlePrint = () => {
     if (!document) return;
-    // Create a new window and print only the document content
     const printWindow = window.open('', '_blank', 'width=900,height=1200')
     if (!printWindow) return;
     printWindow.document.write(`<!DOCTYPE html><html><head><title>${document.title}</title><style>
@@ -269,11 +229,9 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
   const handleCopyText = async () => {
     if (selectedText) {
       try {
-        // Use the modern clipboard API with fallback for older browsers
         if (navigator.clipboard && window.isSecureContext) {
           await navigator.clipboard.writeText(selectedText)
         } else {
-          // Fallback for older browsers or non-secure contexts
           const textArea = window.document.createElement('textarea')
           textArea.value = selectedText
           textArea.style.position = 'fixed'
@@ -287,35 +245,25 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         }
         
         setCopied(true)
-        console.log('[DocumentViewer] Text copied to clipboard:', selectedText.length, 'characters')
-        
-        // Reset copy state after 3 seconds (longer for large text)
         setTimeout(() => setCopied(false), 3000)
       } catch (error) {
-        console.error('Failed to copy text:', error)
-        // Show user-friendly error message
         alert('Failed to copy text. Please try selecting a smaller portion or use Ctrl+C (Cmd+C on Mac) instead.')
       }
     }
   }
 
-  // Convert HTML to readable plain text
   const htmlToPlainText = (html: string) => {
-    // Create a temporary div to parse HTML
     const tempDiv = window.document.createElement('div')
     tempDiv.innerHTML = html
     
-    // Remove script and style elements
     const scripts = tempDiv.querySelectorAll('script, style')
     scripts.forEach(el => el.remove())
     
-    // Get text content and clean it up
     let text = tempDiv.textContent || tempDiv.innerText || ''
     
-    // Clean up extra whitespace and line breaks
     text = text
-      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-      .replace(/\n\s*\n/g, '\n') // Replace multiple line breaks with single
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
       .trim()
     
     return text
@@ -355,9 +303,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a] w-full ">
-      {/* Header - Responsive: column on mobile, row on md+ */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between p-4 border-b border-[#2a2a2a] gap-4 md:gap-0">
-        {/* Title and meta */}
         <div className="flex items-center space-x-3 md:space-x-3">
           <FileText className="w-5 h-5 text-green-400" />
           <div>
@@ -366,9 +312,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
           </div>
         </div>
 
-        {/* Action Buttons - stack at bottom on mobile, right on md+ */}
         <div className="flex flex-col-reverse md:flex-row md:items-center md:space-x-2 gap-2 md:gap-0 w-full md:w-auto">
-          {/* Action Buttons */}
           <div className="flex items-center space-x-2 justify-end md:justify-start w-full md:w-auto">
             <Button
               variant="outline"
@@ -387,7 +331,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
               className="border-[#2a2a2a] text-gray-300 hover:bg-[#1a1a1a] bg-transparent"
             />
           </div>
-          {/* Zoom Controls */}
           <div className="flex items-center space-x-1 bg-[#1a1a1a] rounded-lg p-1 justify-center md:justify-start w-full md:w-auto mt-2 md:mt-0 mb-0 md:mb-0">
             <Button
               variant="ghost"
@@ -412,7 +355,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         </div>
       </div>
 
-      {/* Document Metadata */}
       <div className="px-4 py-2 bg-[#1a1a1a]/50 border-b border-[#2a2a2a]/50 min-w-[430px]">
         <div className="flex items-center justify-between text-xs text-gray-400">
           <div className="flex items-center space-x-4">
@@ -434,7 +376,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         </div>
       </div>
 
-      {/* Document Content */}
       <ScrollArea className="flex-1">
         <div className="p-0 sm:p-0 md:p-8">
           <div
@@ -456,11 +397,9 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         </div>
       </ScrollArea>
 
-      {/* Cursor AI Style Edit Overlay */}
       {editSuggestion && editSuggestion.editData && editSuggestion.showAcceptReject && (
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-[#1a1a1a] border border-blue-500 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
-            {/* Header */}
             <div className="bg-blue-900/30 px-6 py-4 border-b border-blue-500/30">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -476,9 +415,7 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
               )}
             </div>
 
-            {/* Content Comparison */}
             <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
-              {/* Original Content */}
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-red-400 rounded-full"></div>
@@ -491,7 +428,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
                 </div>
               </div>
 
-              {/* Proposed Content */}
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-green-400 rounded-full"></div>
@@ -505,7 +441,6 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="bg-[#0a0a0a] px-6 py-4 border-t border-gray-700 flex justify-between items-center">
               <div className="text-xs text-gray-400">
                 Section: {editSuggestion.editData.section_info || 'Document'}
@@ -536,9 +471,8 @@ export function DocumentViewer({ document, onTextSelect, editSuggestion, onAccep
         </div>
       )}
 
-      {/* Selection Toolbar */}
       {isSelecting && selectedText && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-[#1a1a1a] border border-blue-500 rounded-lg p-3 shadow-lg max-w-lg">
+        <div className="absolute bottom-4 left-2/5 transform -translate-x-1/2 bg-[#1a1a1a] border border-blue-500 rounded-lg p-3 shadow-lg max-w-lg">
           <div className="flex items-center space-x-3">
             <div className="text-sm text-gray-300 flex-1 min-w-0">
               <span className="text-blue-400 font-medium">Selected:</span>
