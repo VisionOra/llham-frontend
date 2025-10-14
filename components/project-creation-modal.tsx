@@ -28,9 +28,7 @@ export function ProjectCreationModal({ trigger, onProjectCreated }: ProjectCreat
       await createProject(title.trim())
       setTitle("")
       setIsOpen(false)
-      // Note: The project will be automatically added to the context and sidebar
     } catch (error) {
-      console.error("Failed to create project:", error)
     }
   }
 

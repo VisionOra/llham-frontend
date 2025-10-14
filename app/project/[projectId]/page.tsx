@@ -116,7 +116,6 @@ function ProjectSessionsContent() {
 
     setCreatingSession(true)
     try {
-      console.log('Creating new session in project:', projectId)
       
       const sessionData: CreateSessionRequest = {
         project_id: projectId,
@@ -125,12 +124,9 @@ function ProjectSessionsContent() {
       }
       
       const newSession = await createSession(sessionData)
-      console.log('New session created:', newSession)
-      
-      // Navigate to the new session with project ID
+     
       router.push(`/chat/${newSession.id}?project=${projectId}`)
     } catch (error) {
-      console.error('Failed to create new session:', error)
     } finally {
       setCreatingSession(false)
     }
@@ -142,9 +138,7 @@ function ProjectSessionsContent() {
 
   const handleDeleteSession = async (sessionId: string, sessionTitle: string) => {
     setCheckingDeleteSessionId(sessionId);
-    // Simulate async check if needed, or just use setTimeout to mimic API call
-    // If you have an API call to check session details, do it here and await it
-    // For now, just a short delay for UX consistency
+
     setTimeout(() => {
       setSessionToDelete(sessionId);
       setShowDeleteDialog(true);
@@ -159,13 +153,11 @@ function ProjectSessionsContent() {
     try {
       await deleteSession(sessionToDelete)
 
-      // Remove session from local state
       setProjectSessions(prev => prev.filter(s => s.id !== sessionToDelete))
       
       setShowDeleteDialog(false)
       setSessionToDelete(null)
     } catch (error) {
-      console.error("Failed to delete session:", error)
       alert("Failed to delete session. Please try again.")
     } finally {
       setIsDeletingSession(false)
@@ -182,7 +174,6 @@ function ProjectSessionsContent() {
   }
 
   const getSessionStatusBadge = (session: LocalSession) => {
-    // Check if session has a document (either with content or just an ID)
     if (session.document && (session.document.content || session.document.id)) {
       return (
         <Badge variant="secondary" className="bg-green-900/50 text-green-300 border-green-700">
@@ -192,7 +183,6 @@ function ProjectSessionsContent() {
       )
     }
 
-    // Check if proposal has been generated (even without document content)
     if (session.is_proposal_generated) {
       return (
         <Badge variant="secondary" className="bg-green-900/50 text-green-300 border-green-700">
@@ -376,7 +366,6 @@ function ProjectSessionsContent() {
                         }))
                         setProjectSessions((prev) => [...prev, ...mappedSessions])
                       } catch (e) {
-                        // Optionally handle error
                       } finally {
                         setLoadingMore(false)
                       }

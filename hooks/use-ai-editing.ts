@@ -76,7 +76,6 @@ export function useAIEditing() {
         setSuggestions((prev) => [...prev, suggestion])
         setPendingEdits((prev) => new Map(prev).set(suggestion.id, { selectedText, context, element }))
       } catch (error) {
-        console.error("Failed to generate suggestion:", error)
       } finally {
         setIsLoading(false)
       }
@@ -131,10 +130,8 @@ export function useAIEditing() {
           editRequest.element,
         )
 
-        // Replace the old suggestion with the new one
         setSuggestions((prev) => prev.map((s) => (s.id === suggestionId ? { ...newSuggestion, id: suggestionId } : s)))
       } catch (error) {
-        console.error("Failed to regenerate suggestion:", error)
       } finally {
         setIsLoading(false)
       }

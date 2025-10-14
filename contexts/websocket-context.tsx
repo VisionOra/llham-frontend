@@ -19,6 +19,7 @@ interface WebSocketContextType {
   isTyping: boolean
   pendingMessage: string | null
   sendMessage: (type: string, message: string, pdfFiles: any[], documentContext?: string | null) => void
+  sendRawMessage: (message: any) => boolean
   setPendingMessage: (message: string | null) => void
   acceptEdit: (editId: string) => void
   rejectEdit: (editId: string) => void
@@ -58,7 +59,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const messageCounter = useRef(0)
  
 
-  // Function to fetch generated document after workflow completion
   const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
     if (fetchedDocumentsRef.current.has(sessionId)) {
       return
@@ -77,14 +77,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const documentData = await response.json()
         
-        // Set the document in the context
         setCurrentDocument({
           id: documentData.id || sessionId,
           title: documentData.title || 'Generated Proposal',
           content: documentData.document || documentData.content,
           created_at: documentData.created_at || new Date().toISOString(),
           updated_at: documentData.updated_at || new Date().toISOString(),
-          author: documentData.created_by || 'AI Assistant'
+          author: documentData.created_by || 'Artilence'
         })
       } else {
         fetchedDocumentsRef.current.delete(sessionId)
@@ -100,7 +99,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Prevent multiple connection attempts
     if (socket?.readyState === WebSocket.OPEN) {
       return
     }
@@ -109,14 +107,12 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Prevent rapid connection attempts (debounce)
     const now = Date.now()
     if (now - lastConnectionAttempt.current < 2000) {
       return
     }
     lastConnectionAttempt.current = now
 
-    // Clear any existing timeout
     if (connectionTimeout.current) {
       clearTimeout(connectionTimeout.current)
       connectionTimeout.current = null
@@ -153,11 +149,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               const currentContent = data.current_text || ''
               
               setMessages(prev => {
-                // Check if streaming message already exists
                 const existingIndex = prev.findIndex(msg => msg.id === streamingId)
                 
                 if (existingIndex >= 0) {
-                  // Update existing streaming message
                   const updated = [...prev]
                   updated[existingIndex] = {
                     ...updated[existingIndex],
@@ -166,7 +160,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                   }
                   return updated
                 } else {
-                  // Create new streaming message
                   return [...prev, {
                     id: streamingId,
                     type: 'ai' as const,
@@ -185,7 +178,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               const completionStreamingId = currentMessageIdRef.current
               
               if (completionStreamingId) {
-                // Finalize the streaming message
                 setMessages(prev => {
                   const existingIndex = prev.findIndex(msg => msg.id === completionStreamingId)
                   
@@ -200,7 +192,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                     }
                     return updated
                   } else {
-                    // Fallback: create new message if streaming message wasn't found
                     return [...prev, {
                       id: Date.now().toString(),
                       type: 'ai' as const,
@@ -215,18 +206,15 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                   }
                 })
                 
-                // Reset streaming state for next message
                 currentMessageIdRef.current = null
               }
               
-              // Clear streaming state
               setCurrentStreamingMessage(null)
               setAgentMode(data.agent_mode || 'conversation')
               setIsTyping(false)
               break
 
             case 'ai_message':
-              // Handle non-streaming messages (fallback)
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 type: 'ai',
@@ -243,14 +231,12 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'ai_message_start':
-              // Start of streaming message
               setIsTyping(true)
               currentMessageRef.current = ''
               currentMessageIdRef.current = Date.now().toString()
               break
 
             case 'ai_message_end':
-              // End of streaming message
               setIsTyping(false)
               if (currentMessageIdRef.current) {
                 setMessages(prev => prev.map(msg => 
@@ -281,7 +267,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             case 'agent_started':
               setCurrentStage(data.stage)
               setProgress(0)
-              // Optionally update the current agent name if you want to display it
               break
 
             case 'agent_progress':
@@ -320,7 +305,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               setProgress(100)
               setAgentMode('editor_mode')
               
-              // Fetch the generated document from the API
               if (data.session_id) {
                 fetchGeneratedDocument(data.session_id)
               }
@@ -365,7 +349,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'edit_suggestion':
-              // Add to chat messages
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 type: 'edit_suggestion',
@@ -376,7 +359,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 editData: data.edit_data,
                 showAcceptReject: data.show_accept_reject
               }])
-              // Also store for document overlay
               setLatestEditSuggestion({
                 id: Date.now().toString(),
                 type: 'edit_suggestion',
@@ -497,14 +479,12 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         
         const reason = reasons[event.code] || `Unknown error (${event.code})`
         
-        // Only attempt reconnection for certain error codes and if we have an active session
         if (event.code === 4001) {
           TokenManager.clearTokens()
           setConnectionStatus('error')
         } else if (event.code !== 1000 && event.code !== 1001 && activeSessionId) {
           handleReconnection()
         } else {
-          console.log('🔌 Normal closure or no active session, not reconnecting')
         }
       }
 
@@ -519,7 +499,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   }, [activeSessionId, API_BASE_URL])
 
   const handleReconnection = useCallback(() => {
-    // Only reconnect if we have an active session
     if (!activeSessionId) {
       return
     }
@@ -530,7 +509,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       
       
       setTimeout(() => {
-        // Double-check we still have an active session before reconnecting
         if (activeSessionId) {
           connect()
         }
@@ -568,6 +546,19 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
   }, [socket, activeSessionId, activeProjectId])
 
+  const sendRawMessage = useCallback((message: any): boolean => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify(message))
+        return true
+      } catch (error) {
+        return false
+      }
+    } else {
+      return false
+    }
+  }, [socket])
+
   const acceptEdit = useCallback((editId: string) => {
     if (socket?.readyState === WebSocket.OPEN && activeSessionId) {
       const payload = {
@@ -578,9 +569,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       }
       
       socket.send(JSON.stringify(payload))
-      
-      // Clear the edit suggestion from overlay
-      setLatestEditSuggestion(null)
+            setLatestEditSuggestion(null)
     }
   }, [socket, activeSessionId])
 
@@ -623,7 +612,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setActiveSessionId(sessionId)
     setActiveProjectId(projectId)
     
-    // Clear state for new session
     setMessages([])
     setCurrentDocument(null)
     setIsGeneratingProposal(false)
@@ -633,12 +621,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setCurrentStreamingMessage(null)
     setLatestEditSuggestion(null)
     
-    // Load previous messages if this is an existing session (not a temp session)
     if (!sessionId.startsWith('temp-')) {
       try {
         const sessionData = await getSessionHistory(sessionId)
         
-        // Convert conversation history to ChatMessage format
         if (sessionData.conversation_history && Array.isArray(sessionData.conversation_history)) {
           const previousMessages: ChatMessage[] = sessionData.conversation_history.map((msg: any, index: number) => ({
             id: `history-${index}`,
@@ -648,7 +634,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             sessionId: sessionId,
             projectId: projectId
           }))
-                      // Map edit_history to ChatMessage format and merge with previousMessages
             let editHistoryMessages: ChatMessage[] = [];
             if (sessionData.edit_history && Array.isArray(sessionData.edit_history)) {
               editHistoryMessages = sessionData.edit_history.map((edit: any, index: number) => ({
@@ -668,29 +653,23 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                 can_revert: edit.can_revert
               }));
             }
-            // Merge and sort by timestamp
             const allMessages = [...previousMessages, ...editHistoryMessages].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
             setMessages(allMessages);
         }
         
-        // Set agent mode based on session state
         if (sessionData.agent_mode) {
           setAgentMode(sessionData.agent_mode)
         }
         
-        // Check if proposal was generated and fetch document
         if (sessionData.is_proposal_generated) {
           setAgentMode('editor_mode')
-          // Fetch the document for this session
           fetchGeneratedDocument(sessionId)
         }
         
       } catch (error) {
-        // Continue anyway, user can still chat
       }
     }
     
-    // Connect WebSocket
     connect()
   }, [socket, activeSessionId, connect])
 
@@ -731,7 +710,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     currentMessageIdRef.current = null
   }, [])
 
-  // Auto-send pending message when session is active and connected
   useEffect(() => {
     if (activeSessionId && pendingMessage && connectionStatus === 'connected' && socket?.readyState === WebSocket.OPEN) {
   sendMessage('chat_message', pendingMessage, [], null)
@@ -739,7 +717,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
   }, [activeSessionId, pendingMessage, connectionStatus, socket, sendMessage])
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (socket) {
@@ -763,7 +740,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     latestEditSuggestion,
     isTyping,
     pendingMessage,
-  sendMessage,
+    sendMessage,
+    sendRawMessage,
     setPendingMessage,
     acceptEdit,
     rejectEdit,

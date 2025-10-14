@@ -76,14 +76,10 @@ export const ChatSidebar = React.memo(function ChatSidebar({
     setIsCreatingProject(true)
     try {
       await createProject(newProjectName.trim())
-      // After context updates, sync local list so new project appears immediately
       setProjects([...contextProjects])
       setShowNewProjectDialog(false)
       setNewProjectName("")
-      // Optionally call onNewProject if you want to navigate somewhere after creation
     } catch (error) {
-      console.error("Failed to create project:", error)
-      // You might want to show an error message here
     } finally {
       setIsCreatingProject(false)
     }
@@ -98,11 +94,9 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const handleDeleteProject = async (projectId: string, projectTitle: string) => {
     setCheckingDeleteProjectId(projectId);
     try {
-      // Check if project has sessions and documents
       const sessionsResponse = await getProjectSessions(projectId, 1)
       const sessions = sessionsResponse.results || []
       const sessionsCount = sessions.length
-      // Count sessions with documents
       const documentsCount = sessions.filter(session => 
         session.document && (session.document.content || session.document.id) || 
         session.is_proposal_generated
@@ -111,8 +105,6 @@ export const ChatSidebar = React.memo(function ChatSidebar({
       setProjectToDelete(projectId)
       setShowDeleteDialog(true)
     } catch (error) {
-      console.error("Failed to check project sessions:", error)
-      // If we can't check sessions, still allow deletion but with generic warning
       setDeleteWarningInfo({ sessionsCount: 0, documentsCount: 0 })
       setProjectToDelete(projectId)
       setShowDeleteDialog(true)
@@ -127,19 +119,13 @@ export const ChatSidebar = React.memo(function ChatSidebar({
     setIsDeletingProject(true)
     try {
       await deleteProject(projectToDelete)
-
-      // Remove project from local state
       setProjects(prev => prev.filter(p => p.id !== projectToDelete))
-      
-      // Refresh projects from context
       await refreshProjects()
       
       setShowDeleteDialog(false)
       setProjectToDelete(null)
       setDeleteWarningInfo({ sessionsCount: 0, documentsCount: 0 })
     } catch (error) {
-      console.error("Failed to delete project:", error)
-      // You might want to show an error message here
       alert("Failed to delete project. Please try again.")
     } finally {
       setIsDeletingProject(false)

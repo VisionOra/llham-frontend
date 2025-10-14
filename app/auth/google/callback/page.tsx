@@ -45,10 +45,14 @@ export default function GoogleCallbackPage() {
         const data = await res.json()
 
         if (data.status==="success") {
-            // Use AuthContext login for Google OAuth
             if (data.user && data.access_token && data.refresh_token) {
               login(data.user, data.access_token, data.refresh_token)
             }
+            const pendingMessage = sessionStorage.getItem('pendingMessage')
+            if (pendingMessage) {
+              sessionStorage.removeItem('pendingMessage')
+            }
+            
             router.push("/dashboard")
         } else {
           setError(data.message || "Google verification failed.")

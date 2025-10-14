@@ -29,7 +29,8 @@ function ChatPageContent() {
     endSession,
     activeSessionId,
     messages: wsMessages,
-    connectionStatus 
+    connectionStatus,
+    sendRawMessage
   } = useWebSocket()
 
   const [chatWidth, setChatWidth] = useState(450) // Chat width in pixels
@@ -151,7 +152,7 @@ function ChatPageContent() {
           content: content,
           created_at: documentContent.created_at,
           updated_at: documentContent.updated_at,
-          author: documentContent.created_by || documentContent.author || 'AI Assistant'
+          author:  'Artilence'
         }
         
         setCurrentDocument(documentForViewer)
@@ -182,7 +183,7 @@ function ChatPageContent() {
         content: documentContent.document || documentContent.content || documentContent.html_content || documentContent.body,
         created_at: documentContent.created_at || currentDocument?.created_at,
         updated_at: documentContent.updated_at || new Date().toISOString(),
-        author: documentContent.created_by || currentDocument?.author || 'AI Assistant'
+        author: documentContent.created_by || currentDocument?.author || 'Artilence'
       }
       
       setCurrentDocument(refreshedDocument)
@@ -297,11 +298,14 @@ function ChatPageContent() {
               {/* Document Panel */}
               <div
                 className={
-                  `min-h-0 ` +
+                  `min-h-0 overflow-x-hidden flex-shrink ` +
                   (activeTab === 'document' ? 'block' : 'hidden') +
                   ' md:block md:min-w-[0] md:w-auto md:flex-1'
                 }
-                style={{ width: typeof window !== 'undefined' && window.innerWidth < 860 ? `calc(100vw - ${sidebarWidth}px)` : documentWidth }}
+                style={{ 
+                  width: typeof window !== 'undefined' && window.innerWidth < 860 ? `calc(100vw - ${sidebarWidth}px)` : documentWidth,
+                  maxWidth: '100%'
+                }}
               >
                 <DocumentViewer
                   document={currentDocument}
@@ -309,6 +313,8 @@ function ChatPageContent() {
                   editSuggestion={latestEditSuggestion || undefined}
                   onAcceptEdit={acceptEdit}
                   onRejectEdit={rejectEdit}
+                  sessionId={activeSessionId || undefined}
+                  sendMessage={sendRawMessage}
                 />
               </div>
 

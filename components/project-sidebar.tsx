@@ -101,7 +101,6 @@ export function ProjectSidebar({
       setNewProjectTitle("")
       setShowCreateForm(false)
     } catch (error) {
-      console.error("Failed to create project:", error)
     }
   }
 

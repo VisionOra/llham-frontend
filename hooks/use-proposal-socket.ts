@@ -50,24 +50,19 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
   const connect = useCallback(() => {
     const token = TokenManager.getAccessToken();
     if (!token) {
-      console.error('No token available for WebSocket connection');
       return;
     }
 
     if (socket?.readyState === WebSocket.OPEN) return;
 
     setConnectionStatus('connecting');
-    
-    // Use the backend URL directly for WebSocket (WebSocket doesn't work through Next.js proxy)
-    // const wsUrl = `wss://api.llham.com/ws/chat/?token=${token}`;
+   
     const wsUrl = `ws://192.168.1.105:8000/ws/chat/?token=${token}`;
-    console.log('[WebSocket] Connecting to:', wsUrl);
 
     try {
       const ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
-        console.log('✅ WebSocket connected');
         setConnectionStatus('connected');
         reconnectAttempts.current = 0;
       };
@@ -75,11 +70,9 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('📥 WebSocket message received:', data);
           
           switch(data.type) {
             case 'connection_established':
-              console.log('🔗 Connection established');
               break;
 
             case 'ai_message':
@@ -91,18 +84,15 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
                 sessionId: data.session_id,
                 projectId: data.project_id,
                 suggestedQuestions: data.suggested_questions,
-                suggestions: data.suggested_questions // Add for compatibility
+                suggestions: data.suggested_questions 
               }]);
               setAgentMode(data.agent_mode || 'conversation');
               break;
 
             case 'title_generated':
-              console.log('📝 Title generated:', data.title);
-              // You can update session title in your state if needed
               break;
 
             case 'proposal_generation_started':
-              console.log('🚀 Proposal generation started');
               setIsGeneratingProposal(true);
               setProgress(0);
               setAgentMode('proposal_generation');
@@ -117,19 +107,16 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
               break;
 
             case 'generation_progress':
-              console.log('📊 Generation progress:', data.stage, data.progress);
               setCurrentStage(data.stage);
               setProgress(data.progress);
               break;
 
             case 'proposal_completed':
-              console.log('🎉 Proposal completed');
               setIsGeneratingProposal(false);
               setCurrentStage(null);
               setProgress(100);
               setAgentMode('editor_mode');
               
-              // Set the document for display
               if (data.document) {
                 setCurrentDocument({
                   id: data.document_id,
@@ -154,7 +141,6 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
               break;
 
             case 'edit_suggestion':
-              console.log('✏️ Edit suggestion received');
               setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 type: 'edit_suggestion',
@@ -168,7 +154,6 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
               break;
 
             case 'proposal_error':
-              console.error('❌ Proposal error:', data.error);
               setIsGeneratingProposal(false);
               setCurrentStage(null);
               setMessages(prev => [...prev, {
@@ -181,15 +166,12 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
               break;
 
             default:
-              console.log('Unknown message type:', data.type);
           }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
         }
       };
 
       ws.onclose = (event) => {
-        console.log('🔌 WebSocket disconnected:', event.code);
         setConnectionStatus('disconnected');
         
         const reasons: { [key: number]: string } = {
@@ -199,26 +181,21 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
         };
         
         const reason = reasons[event.code] || `Unknown error (${event.code})`;
-        console.log('Disconnect reason:', reason);
         
         if (event.code === 4001) {
-          // Token expired, need to re-authenticate
           TokenManager.clearTokens();
           setConnectionStatus('error');
         } else if (event.code !== 1000) {
-          // Attempt reconnection for non-normal closures
           handleReconnection();
         }
       };
 
       ws.onerror = (error) => {
-        console.error('❌ WebSocket error:', error);
         setConnectionStatus('error');
       };
 
       setSocket(ws);
     } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
       setConnectionStatus('error');
     }
   }, []);
@@ -227,14 +204,11 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
     if (reconnectAttempts.current < maxReconnectAttempts) {
       reconnectAttempts.current++;
       const delay = 1000 * reconnectAttempts.current;
-      
-      console.log(`🔄 Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts}) in ${delay}ms`);
-      
+          
       setTimeout(() => {
         connect();
       }, delay);
     } else {
-      console.error('❌ Max reconnection attempts reached');
       setConnectionStatus('error');
     }
   }, [connect]);
@@ -249,10 +223,7 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
         document_context: documentContext
       };
       
-      console.log('📤 Sending message:', payload);
       socket.send(JSON.stringify(payload));
-      
-      // Add user message to chat
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         type: 'user',
@@ -262,7 +233,6 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
         projectId: projectId || undefined
       }]);
     } else {
-      console.error('WebSocket not connected');
     }
   }, [socket, sessionId, projectId]);
 
@@ -274,9 +244,7 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
         edit_id: editId,
         action: 'accept'
       };
-      
-      console.log('✅ Accepting edit:', payload);
-      socket.send(JSON.stringify(payload));
+            socket.send(JSON.stringify(payload));
     }
   }, [socket, sessionId]);
 
@@ -288,9 +256,7 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
         edit_id: editId,
         action: 'reject'
       };
-      
-      console.log('❌ Rejecting edit:', payload);
-      socket.send(JSON.stringify(payload));
+            socket.send(JSON.stringify(payload));
     }
   }, [socket, sessionId]);
 
@@ -301,13 +267,9 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
     }
   }, [socket, sendMessage]);
 
-  // Connect only when there's an active session
   useEffect(() => {
     if (sessionId) {
-      console.log('🔌 Session active, connecting WebSocket for session:', sessionId);
       connect();
-      
-      // Clear messages when starting new session
       setMessages([]);
       setCurrentDocument(null);
       setIsGeneratingProposal(false);
@@ -315,9 +277,7 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
       setProgress(0);
       setAgentMode('conversation');
     } else {
-      // Disconnect when no session
       if (socket) {
-        console.log('🔌 No active session, closing WebSocket connection');
         socket.close(1000);
         setSocket(null);
         setConnectionStatus('disconnected');
@@ -327,17 +287,14 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
     
     return () => {
       if (socket) {
-        console.log('🔌 Cleanup: Closing WebSocket connection');
         socket.close(1000);
       }
     };
   }, [sessionId, connect]);
 
-  // Disconnect when component unmounts
   useEffect(() => {
     return () => {
       if (socket) {
-        console.log('🔌 Component unmount: Closing WebSocket connection');
         socket.close(1000);
       }
     };
@@ -345,7 +302,6 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
 
   const disconnect = useCallback(() => {
     if (socket) {
-      console.log('🔌 Manual disconnect');
       socket.close(1000);
       setSocket(null);
       setConnectionStatus('disconnected');
@@ -354,7 +310,6 @@ export const useProposalSocket = (sessionId?: string | null, projectId?: string 
 
   const manualConnect = useCallback(() => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      console.log('🔌 Manual connect requested');
       connect();
     }
   }, [socket, connect]);
