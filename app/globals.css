@@ -147,8 +147,8 @@
     border: 1.5px solid #e2e8f0;
     border-radius: 6px;
     padding: 0.75em 1em;
-    margin-top: 2em;
-    margin-bottom: 1em;
+    margin-top: 0.5em;
+    margin-bottom: 0.3em;
     line-height: 1.4;
     background: #f8fafc;
   }
@@ -180,27 +180,28 @@
 }
 
 .document-content p {
-  margin-top: 1em;
-  margin-bottom: 1em;
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
       padding: 0.75em 1em;
 
 }
+
 .document-content ul{
-  margin-top: 1em;
-  margin-bottom: 1em;
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
       padding: 0.75em 1em;
       margin-left: 2em;
 }
 
 .document-content ol{
-  margin-top: 1em;
-  margin-bottom: 1em;
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
       padding: 0.75em 1em;
 }
 .document-content li {
   list-style-type: disc;
-  margin-top: 0.5em;
-  margin-bottom: 0.5em;
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
       padding: 0.25em 0.5em;  }
   .document-content th {
     text-align: left !important;
@@ -250,5 +251,108 @@
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Infinite scroll animation for pills */
+@keyframes scroll-slow {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-slow {
+  animation: scroll-slow 60s linear infinite;
+}
+
+.animate-scroll-slow:hover {
+  animation-play-state: paused;
+}
+
+/* Document content responsive styles */
+.document-content {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.document-content * {
+  max-width: 100% !important;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.document-content img,
+.document-content video,
+.document-content iframe {
+  max-width: 100% !important;
+  height: auto !important;
+  object-fit: contain;
+}
+
+.document-content table {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto;
+  display: table;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border: 1px solid #d1d5db;
+}
+
+.document-content table td,
+.document-content table th {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  border: 1px solid #d1d5db;
+  padding: 8px 12px;
+}
+
+.document-content table th {
+  background-color: #f3f4f6;
+  font-weight: 600;
+}
+
+.document-content table tr {
+  border-bottom: 1px solid #d1d5db;
+}
+
+.document-content table tr:hover {
+  background-color: #f9fafb;
+}
+
+.document-content pre,
+.document-content code {
+  white-space: pre-wrap !important;
+  word-break: break-all;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.document-content p,
+.document-content div,
+.document-content span,
+.document-content h1,
+.document-content h2,
+.document-content h3,
+.document-content h4,
+.document-content h5,
+.document-content h6 {
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 

@@ -11,6 +11,35 @@ import ReactMarkdown from "react-markdown"
 import { useWebSocket } from "@/contexts/websocket-context"
 import AutoGrowTextarea from "./AutoGrowTextarea"
 
+const SUGGESTED_MESSAGES = [
+  "generate proposal",
+  "create proposal",
+  "make proposal",
+  "build proposal",
+  "start proposal",
+  "proposal generation",
+  "generate me a proposal",
+  "create me a proposal",
+  "make me a proposal",
+  "build me a proposal",
+  "let's generate",
+  "let's create",
+  "proceed with proposal",
+  "go ahead",
+  "create a proposal",
+  "make a proposal",
+  "build a proposal",
+  "let's build a proposal",
+  "let's generate a proposal",
+  "let's create a proposal",
+  "let's make a proposal",
+  "let's start a proposal",
+  "let's proceed with a proposal",
+  "let's go ahead with a proposal",
+  "give me estimations",
+  "estimations"
+]
+
 interface Message {
   id: string
   type: "user" | "ai" | "system" | "file"
@@ -68,6 +97,7 @@ export const ChatInterface = React.memo(function ChatInterface({
   const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
   const [isUserTyping, setIsUserTyping] = useState(false)
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set())
+  const [randomSuggestedMessages, setRandomSuggestedMessages] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -140,6 +170,15 @@ export const ChatInterface = React.memo(function ChatInterface({
     }
   }, [isUserTyping, isDocumentMode, currentDocument])
 
+  // Randomly shuffle all suggested messages on mount
+  useEffect(() => {
+    const shuffleMessages = () => {
+      const shuffled = [...SUGGESTED_MESSAGES].sort(() => Math.random() - 0.5)
+      return shuffled
+    }
+    setRandomSuggestedMessages(shuffleMessages())
+  }, [])
+
   // Handle document generation callback
   useEffect(() => {
     if (currentDocument && onDocumentGenerated) {
@@ -197,6 +236,18 @@ export const ChatInterface = React.memo(function ChatInterface({
       originalMessage: message
     }
   }, [detectPastedContent])
+
+  const handleSuggestedMessageClick = useCallback((message: string) => {
+    // Directly send the message without populating input
+    if (isWelcomeMode) {
+      onNewChat(message)
+    } else {
+      // Send message through the normal flow
+      if (connectionStatus === 'connected' && !isGeneratingProposal) {
+        sendMessage('chat_message', message, [], null)
+      }
+    }
+  }, [isWelcomeMode, onNewChat, connectionStatus, isGeneratingProposal, sendMessage])
 
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim()) return;
@@ -636,7 +687,7 @@ export const ChatInterface = React.memo(function ChatInterface({
                 <div className="inline-block p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] min-w-[200px]">
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-gray-300">
-                      ILHAM is typing
+                      LLHAM is typing
                     </span>
                     <div className="flex space-x-1">
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -709,6 +760,33 @@ export const ChatInterface = React.memo(function ChatInterface({
 
       {/* Input Area */}
       <div className="p-4 border-t border-[#2a2a2a] ">
+        {/* Suggested Messages Pills - Only show when not in document mode */}
+        {!isDocumentMode && randomSuggestedMessages.length > 0 && (
+        <div className="mb-3 w-full overflow-hidden">
+        <div 
+          className="w-full max-w-6xl mx-auto overflow-x-auto overflow-y-hidden scrollbar-hide relative"
+          style={{ 
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            WebkitOverflowScrolling: 'touch'
+          }}
+        >
+          <div className="flex gap-2 pb-2">
+            {randomSuggestedMessages.map((message, index) => (
+              <button
+                key={index}
+                onClick={() => handleSuggestedMessageClick(message)}
+                className="px-4 py-2 text-sm bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-green-600 rounded-full text-gray-300 hover:text-white transition-all duration-200 capitalize whitespace-nowrap flex-shrink-0"
+              >
+                {message}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      
+        )}
+
         {/* Uploaded Files Display */}
         {uploadedFiles.length > 0 && (
           <div className="mb-4 space-y-2">

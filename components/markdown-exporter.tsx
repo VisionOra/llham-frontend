@@ -217,7 +217,6 @@ ${markdownContent}
       window.document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Markdown export failed:', error);
       alert('Markdown export failed. Please try again.');
     } finally {
       setIsExporting(false);

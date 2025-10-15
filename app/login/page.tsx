@@ -62,7 +62,14 @@ function LoginForm() {
 
       if (response.status === "success") {
         login(response.user, response.access_token, response.refresh_token)
-        router.push("/")
+        
+        const pendingMessage = sessionStorage.getItem('pendingMessage')
+        if (pendingMessage) {
+          sessionStorage.removeItem('pendingMessage')
+          router.push("/dashboard")
+        } else {
+          router.push("/")
+        }
       } else {
         setError(response.message || "Login failed")
       }
