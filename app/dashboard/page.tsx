@@ -53,10 +53,7 @@ function DashboardContent() {
   const handleNewChat = async (message: string) => {
     setShowLoader(true)
     try {
-      setPendingMessage(message)
-      const projectTitle = message.length > 50 ? message.substring(0, 47) + "..." : message
       const requestData: CreateProjectWithSessionRequest = {
-        title: projectTitle,
         initial_idea: message,
         agent_mode: "conversation"
       }
@@ -65,9 +62,14 @@ function DashboardContent() {
       await refreshProjects()
       const newProject = response.project
       const newSession = response.session
+      setPendingMessage(message)
+      sessionStorage.setItem('pendingMessage', message)
+      sessionStorage.setItem('pendingSessionId', newSession.id)
       router.push(`/chat/${newSession.id}?project=${newProject.id}`)
     } catch (error) {
-      setPendingMessage(null) 
+      setPendingMessage(null)
+      sessionStorage.removeItem('pendingMessage')
+      sessionStorage.removeItem('pendingSessionId')
     } finally {
       setShowLoader(false)
     }

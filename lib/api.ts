@@ -428,7 +428,7 @@ export interface CreateSessionRequest {
 }
 
 export interface CreateProjectWithSessionRequest {
-  title: string;
+  title?: string;
   initial_idea: string;
   agent_mode?: string;
 }

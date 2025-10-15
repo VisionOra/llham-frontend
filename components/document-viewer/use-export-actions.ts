@@ -11,12 +11,6 @@ export const useExportActions = (document: Document | null, processedContent: st
       
       const fullMarkdown = `# ${document.title}
 
-**Author:** ${document.author || 'Unknown'}  
-**Created:** ${formatDate(document.created_at)}  
-**Last Updated:** ${formatDate(document.updated_at)}
-
----
-
 ${markdownContent}
 `
       
@@ -40,11 +34,6 @@ ${markdownContent}
     try {
       const htmlContent = `<!DOCTYPE html><html><head><meta charset='UTF-8'><title>${document.title}</title></head><body style='font-family: Arial, sans-serif; background: #fff; color: #000; padding: 32px; width: 100%; max-width: 900px; margin: 0 auto;'>
         <h1 style="color:#333;margin-top:20px;font-size:2.2em;font-weight:bold;border-bottom:2px solid #4a5568;padding-bottom:8px;">${document.title}</h1>
-        <div style="color:#666;font-size:12px;margin-bottom:16px;">
-          ${document.author ? `<div><strong>Author:</strong> ${document.author}</div>` : ''}
-          ${document.created_at ? `<div><strong>Created:</strong> ${formatDate(document.created_at)}</div>` : ''}
-          ${document.updated_at ? `<div><strong>Last Updated:</strong> ${formatDate(document.updated_at)}</div>` : ''}
-        </div>
         <div style="font-size:14px;line-height:1.8;color:#000;">${processedContent}</div>
       </body></html>`
       
@@ -70,11 +59,7 @@ ${markdownContent}
       
       const fullMarkdown = `# ${document.title}
 
-**Author:** ${document.author || 'Unknown'}  
-**Created:** ${formatDate(document.created_at)}  
-**Last Updated:** ${formatDate(document.updated_at)}
 
----
 
 ${markdownContent}
 `

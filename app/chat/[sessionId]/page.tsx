@@ -108,6 +108,22 @@ function ChatPageContent() {
     }
   }, [sessionId, projectId, activeSessionId])
 
+  // Check sessionStorage for pending message when session starts
+  useEffect(() => {
+    if (sessionId && connectionStatus === 'connected') {
+      const storedMessage = sessionStorage.getItem('pendingMessage')
+      const storedSessionId = sessionStorage.getItem('pendingSessionId')
+      
+      if (storedMessage && storedSessionId === sessionId && !pendingMessage) {
+        // Set the pending message in context so it gets sent
+        setPendingMessage(storedMessage)
+        // Clean up sessionStorage
+        sessionStorage.removeItem('pendingMessage')
+        sessionStorage.removeItem('pendingSessionId')
+      }
+    }
+  }, [sessionId, connectionStatus, pendingMessage, setPendingMessage])
+
   // Load document for session (using exact logic from old working code)
   const loadSessionDocument = useCallback(async (sessionId: string) => {
     if (loadingDocument || loadedSessionsRef.current.has(sessionId)) {
