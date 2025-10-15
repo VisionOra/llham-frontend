@@ -8,8 +8,26 @@ import { DocumentViewerProps, EditableBlock } from './types'
 import { countCharacters, parseHTMLToBlocks, blocksToHTML } from './utils'
 import { useExportActions } from './use-export-actions'
 import { DocumentToolbar } from './document-toolbar'
-import { DocumentHeader } from './document-header'
 import { EditableBlockRenderer } from './editable-block'
+
+const stripHtmlTags = (html: string): string => {
+  if (!html) return '';
+  
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  
+  let text = temp.textContent || temp.innerText || '';
+  
+  text = text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+  
+  return text.trim();
+};
 
 export function DocumentViewer({ 
   document, 
@@ -22,7 +40,6 @@ export function DocumentViewer({
   sendMessage 
 }: DocumentViewerProps) {
   const [selectedText, setSelectedText] = useState("")
-  const [zoomLevel, setZoomLevel] = useState(100)
   const [isSelecting, setIsSelecting] = useState(false)
   const [copied, setCopied] = useState(false)
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
@@ -33,7 +50,12 @@ export function DocumentViewer({
   const contentRef = useRef<HTMLDivElement>(null)
   const editableRef = useRef<HTMLElement>(null)
 
-  // Process document content
+  useEffect(() => {
+    if (document) {
+      setIsLoading(true)
+    }
+  }, [document?.id])
+
   const processedContent = useMemo(() => {
     if (!document) return ''
 
@@ -89,21 +111,25 @@ export function DocumentViewer({
     return contentString || ''
   }, [document])
 
-  // Initialize editable blocks
   useEffect(() => {
     if (processedContent) {
       setIsLoading(true)
-      const blocks = parseHTMLToBlocks(processedContent)
-      setEditableBlocks(blocks)
-      // Small delay to show loading state
-      setTimeout(() => setIsLoading(false), 100)
+      requestAnimationFrame(() => {
+        const blocks = parseHTMLToBlocks(processedContent)
+        setEditableBlocks(blocks)
+        setTimeout(() => setIsLoading(false), 300)
+      })
+    } else if (document) {
+      setIsLoading(true)
+      setEditableBlocks([])
+    } else {
+      setIsLoading(false)
+      setEditableBlocks([])
     }
-  }, [processedContent])
+  }, [processedContent, document])
 
-  // Export actions hook
   const { handleExportMarkdown, handleExportPDF, handleShareWithNotion } = useExportActions(document, processedContent)
 
-  // Edit handlers
   const handleStartEdit = (blockId: string, currentContent: string) => {
     if (!editMode) return
     setEditingBlockId(blockId)
@@ -141,7 +167,6 @@ export function DocumentViewer({
       content: newHTML
     }
     
-    // Send WebSocket message with document_id
     if (sendMessage && sessionId && document?.id) {
       const message = {
         type: 'document_update',
@@ -167,7 +192,6 @@ export function DocumentViewer({
     }
   }
 
-  // Text selection handlers
   useEffect(() => {
     if (editMode) return
 
@@ -220,7 +244,6 @@ export function DocumentViewer({
     }
   }, [document, onTextSelect, editMode])
 
-  // Print handler
   const handlePrint = () => {
     if (!document) return
 
@@ -245,12 +268,14 @@ export function DocumentViewer({
       .meta { color:#666;font-size:12px;margin-bottom:16px; }
       .content { font-size:14px;line-height:1.8;color:#000; }
     </style></head><body>
+   
+    <div className="flex justify-end items-end">
+    <p className="text-xs  text-gray-400 uppercase tracking-wider mb-2">
+                    Artilence
+                  </p>
+                  </div>
       <h1>${document.title}</h1>
-      <div class="meta">
-        ${document.author ? `<div><strong>Author:</strong> ${document.author}</div>` : ''}
-        ${document.created_at ? `<div><strong>Created:</strong> ${new Date(document.created_at).toLocaleDateString()}</div>` : ''}
-        ${document.updated_at ? `<div><strong>Last Updated:</strong> ${new Date(document.updated_at).toLocaleDateString()}</div>` : ''}
-      </div>
+
       <div class="content">${printContent}</div>
     </body></html>`)
     iframeDoc.close()
@@ -267,7 +292,6 @@ export function DocumentViewer({
     }
   }
 
-  // Copy handler
   const handleCopyText = () => {
     if (selectedText) {
       navigator.clipboard.writeText(selectedText)
@@ -275,10 +299,6 @@ export function DocumentViewer({
       setTimeout(() => setCopied(false), 2000)
     }
   }
-
-  // Zoom handlers
-  const handleZoomIn = () => setZoomLevel(prev => Math.min(150, prev + 10))
-  const handleZoomOut = () => setZoomLevel(prev => Math.max(50, prev - 10))
 
   if (!document) {
     return (
@@ -292,102 +312,114 @@ export function DocumentViewer({
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a] text-gray-200 overflow-hidden">
-      {/* Toolbar */}
       <DocumentToolbar
         document={document}
         editMode={editMode}
         isSelecting={isSelecting}
+        copied={copied}
+        selectedText={selectedText}
         onToggleEdit={toggleEditMode}
         onPrint={handlePrint}
         onExportMarkdown={handleExportMarkdown}
         onExportPDF={handleExportPDF}
         onShareWithNotion={handleShareWithNotion}
-      />
-
-      {/* Header with Zoom Controls */}
-      <DocumentHeader
-        document={document}
-        zoomLevel={zoomLevel}
-        isSelecting={isSelecting}
-        editMode={editMode}
-        copied={copied}
-        selectedText={selectedText}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
         onCopy={handleCopyText}
       />
 
-      {/* Document Content */}
       <ScrollArea className="flex-1 overflow-x-hidden">
         <div className="flex justify-center p-4 md:p-8">
           <div 
             ref={contentRef}
             className={`document-content bg-white text-black p-8 md:p-12 shadow-2xl w-full max-w-full rounded-lg`}
-            style={{
-              transform: `scale(${zoomLevel / 100})`,
-              transformOrigin: 'top center',
-              transition: 'transform 0.2s ease',
-              minWidth: '0',
-            }}
           >
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
-                <p className="text-gray-600 text-sm">Loading document...</p>
+              <div className="flex flex-col items-center justify-center min-h-[600px]">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-t-4 border-green-500 mb-6"></div>
+                <p className="text-gray-700 text-base font-medium">Loading document...</p>
+                <p className="text-gray-500 text-sm mt-2">Please wait</p>
               </div>
             ) : (
-              editableBlocks.map(block => (
-                <EditableBlockRenderer
-                  key={block.id}
-                  block={block}
-                  editingBlockId={editingBlockId}
-                  editMode={editMode}
-                  editableRef={editableRef}
-                  onStartEdit={handleStartEdit}
-                  onSaveEdit={handleSaveEdit}
-                  onCancelEdit={handleCancelEdit}
-                  onContentChange={setEditedContent}
-                />
-              ))
+              <>
+                {/* Document Header */}
+               
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
+                    Artilence
+                  </p>
+                  <h1 className="text-2xl md:text-2xl font-bold text-gray-900 break-words">
+                    {document.title}
+                  </h1>
+                
+
+                {/* Document Content */}
+                {editableBlocks.map(block => (
+                  <EditableBlockRenderer
+                    key={block.id}
+                    block={block}
+                    editingBlockId={editingBlockId}
+                    editMode={editMode}
+                    editableRef={editableRef}
+                    onStartEdit={handleStartEdit}
+                    onSaveEdit={handleSaveEdit}
+                    onCancelEdit={handleCancelEdit}
+                    onContentChange={setEditedContent}
+                  />
+                ))}
+              </>
             )}
           </div>
         </div>
       </ScrollArea>
 
-      {/* Edit Suggestion Badge */}
       {editSuggestion?.showAcceptReject && editSuggestion.editData && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg p-6 max-w-2xl w-full shadow-2xl">
-            <div className="flex items-start justify-between mb-4">
+          <div className="bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg max-w-2xl w-full shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-start justify-between p-6 pb-4 border-b border-[#3a3a3a] flex-shrink-0">
               <h3 className="text-lg font-semibold text-white">Edit Suggestion</h3>
               <button 
-                onClick={() => onRejectEdit?.(editSuggestion.id)}
+                onClick={() => {
+                  const editId = editSuggestion.editData?.edit_id || editSuggestion.id;
+                  onRejectEdit?.(editId);
+                }}
                 className="text-gray-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-sm text-gray-300 mb-4">{editSuggestion.editData.reason}</p>
-            <div className="space-y-3 mb-6">
-              <div className="bg-[#0a0a0a] border border-red-900/30 rounded p-3">
-                <div className="text-xs text-red-400 font-semibold mb-1">Original:</div>
-                <div className="text-sm text-gray-300">{editSuggestion.editData.original}</div>
-              </div>
-              <div className="bg-[#0a0a0a] border border-green-900/30 rounded p-3">
-                <div className="text-xs text-green-400 font-semibold mb-1">Proposed:</div>
-                <div className="text-sm text-gray-300">{editSuggestion.editData.proposed}</div>
+            
+            <div className="overflow-y-auto flex-1 p-6">
+              <p className="text-sm text-gray-300 mb-4">{editSuggestion.editData.reason}</p>
+              <div className="space-y-3">
+                <div className="bg-[#0a0a0a] border border-red-900/30 rounded p-3">
+                  <div className="text-xs text-red-400 font-semibold mb-2">Original:</div>
+                  <div className="text-sm text-gray-300 whitespace-pre-wrap break-words">
+                    {stripHtmlTags(editSuggestion.editData.original)}
+                  </div>
+                </div>
+                <div className="bg-[#0a0a0a] border border-green-900/30 rounded p-3">
+                  <div className="text-xs text-green-400 font-semibold mb-2">Proposed:</div>
+                  <div className="text-sm text-gray-300 whitespace-pre-wrap break-words">
+                    {stripHtmlTags(editSuggestion.editData.proposed)}
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="flex gap-3 justify-end">
+            
+            <div className="flex gap-3 justify-end p-6 pt-4 border-t border-[#3a3a3a] flex-shrink-0">
               <button
-                onClick={() => onRejectEdit?.(editSuggestion.id)}
+                onClick={() => {
+                  const editId = editSuggestion.editData?.edit_id || editSuggestion.id;
+                  onRejectEdit?.(editId);
+                }}
                 className="flex items-center gap-2 bg-transparent border border-[#3a3a3a] hover:bg-[#2a2a2a] text-gray-300 px-4 py-2 rounded text-sm transition-colors"
               >
                 <X className="w-4 h-4" />
                 Reject
               </button>
               <button
-                onClick={() => onAcceptEdit?.(editSuggestion.id)}
+                onClick={() => {
+                  const editId = editSuggestion.editData?.edit_id || editSuggestion.id;
+                  onAcceptEdit?.(editId);
+                }}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm transition-colors"
               >
                 <Save className="w-4 h-4" />
@@ -401,6 +433,5 @@ export function DocumentViewer({
   )
 }
 
-// Re-export types
 export * from './types'
 

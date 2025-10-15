@@ -238,16 +238,9 @@ export const ChatInterface = React.memo(function ChatInterface({
   }, [detectPastedContent])
 
   const handleSuggestedMessageClick = useCallback((message: string) => {
-    // Directly send the message without populating input
-    if (isWelcomeMode) {
-      onNewChat(message)
-    } else {
-      // Send message through the normal flow
-      if (connectionStatus === 'connected' && !isGeneratingProposal) {
-        sendMessage('chat_message', message, [], null)
-      }
-    }
-  }, [isWelcomeMode, onNewChat, connectionStatus, isGeneratingProposal, sendMessage])
+    setInputValue(message)
+    textareaRef.current?.focus()
+  }, [setInputValue])
 
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim()) return;
@@ -776,7 +769,7 @@ export const ChatInterface = React.memo(function ChatInterface({
               <button
                 key={index}
                 onClick={() => handleSuggestedMessageClick(message)}
-                className="px-4 py-2 text-sm bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-green-600 rounded-full text-gray-300 hover:text-white transition-all duration-200 capitalize whitespace-nowrap flex-shrink-0"
+                className="px-4 py-2 text-sm bg-[#0a0a0a] hover:bg-[#1a1a1a] border border-[#1a1a1a] hover:border-green-700 rounded-full text-gray-500 hover:text-gray-300 transition-all duration-200 capitalize whitespace-nowrap flex-shrink-0 opacity-60 hover:opacity-100"
               >
                 {message}
               </button>

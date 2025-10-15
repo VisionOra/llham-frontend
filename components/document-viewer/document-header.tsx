@@ -4,7 +4,6 @@ import React from 'react'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ZoomIn, ZoomOut, Type, Copy, Check, Edit3 } from "lucide-react"
-import { formatDate } from './utils'
 import { Document } from './types'
 
 interface DocumentHeaderProps {
@@ -55,12 +54,6 @@ export const DocumentHeader: React.FC<DocumentHeaderProps> = ({
         >
           <ZoomIn className="w-4 h-4" />
         </Button>
-      </div>
-
-      {/* Created/Author Info - Hidden on mobile, shown on desktop */}
-      <div className="hidden md:flex items-center space-x-4">
-        <span>Created: {formatDate(document.created_at)}</span>
-        {document.author && <span>Author: {document.author}</span>}
       </div>
       
       {/* Status Badges - Top row on mobile */}
