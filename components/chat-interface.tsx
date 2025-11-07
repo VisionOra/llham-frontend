@@ -348,7 +348,7 @@ export const ChatInterface = React.memo(function ChatInterface({
 
   if (isWelcomeMode) {
     return (
-      <div className="w-full max-w-4xl mx-auto px-4">
+      <div className="w-full">
         <div className="relative">
           {/* Selected Text Indicator */}
           {currentSelectedText && (
@@ -363,38 +363,48 @@ export const ChatInterface = React.memo(function ChatInterface({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded max-h-20 overflow-y-auto">
+              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded max-h-20 overflow-y-auto border border-[#2a2a2a]">
                 {currentSelectedText.length > 200 ? currentSelectedText.substring(0, 200) + '...' : currentSelectedText}
               </div>
             </div>
           )}
           
-          <div className="relative group">
-            <AutoGrowTextarea
-              value={inputValue}
-              setValue={setInputValue}
-              onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-            />
-
-          
-
-            <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2">
+          {/* Input Container - Dark Background */}
+          <div className="relative flex items-center justify-center gap-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-2 focus-within:border-green-600 transition-all">
+            {/* Attach Button */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <FileUploadButton onFileUploaded={handleFileUploaded} />
+            </div>
+            
+            {/* Text Input */}
+            <div className="flex-1 min-w-0 max-w-2xl">
+              <AutoGrowTextarea
+                value={inputValue}
+                setValue={setInputValue}
+                placeholder="Ask a question or make a request..."
+                onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+              />
+            </div>
+            
+            {/* Send Button */}
+            <div className="flex-shrink-0">
               <Button
                 onClick={handleSendMessage}
                 disabled={!inputValue.trim() || (!isWelcomeMode && (connectionStatus !== 'connected' || isGeneratingProposal))}
-                size="sm"
-                className="bg-gradient-to-r from-white to-gray-100 text-black hover:from-gray-100 hover:to-gray-200 rounded-xl px-4 py-2 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 rounded-full h-8 w-8 p-0 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {!isWelcomeMode && (connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {!isWelcomeMode && (connectionStatus !== 'connected' || isGeneratingProposal) ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </Button>
             </div>
-
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 pointer-events-none blur-xl -z-10" />
           </div>
         </div>
       </div>

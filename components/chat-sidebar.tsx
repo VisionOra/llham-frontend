@@ -64,6 +64,10 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   }>({ sessionsCount: 0, documentsCount: 0 })
   const [showSearchInput, setShowSearchInput] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [modalSearchTerm, setModalSearchTerm] = useState("");
+  const [allSessions, setAllSessions] = useState<Array<{id: string, projectId: string, projectTitle: string, title: string}>>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
 
   const handleNewProjectClick = () => {
     setNewProjectName("")
@@ -90,6 +94,66 @@ export const ChatSidebar = React.memo(function ChatSidebar({
       handleCreateProject()
     }
   }
+
+  const loadAllSessions = async () => {
+    setLoadingSessions(true)
+    setAllSessions([]) // Clear previous sessions
+    
+    try {
+      // Load sessions from all projects in parallel and update as they complete
+      const allSessionsData: Array<{id: string, projectId: string, projectTitle: string, title: string}> = []
+      
+      // Create promises that update state as they resolve
+      const sessionPromises = projects.map(async (project) => {
+        try {
+          const response = await getProjectSessions(project.id, 1)
+          const validSessions = response.results.filter(session => 
+            session.conversation_history && session.conversation_history.length > 0
+          )
+          
+          const projectSessions = validSessions.map(session => ({
+            id: session.id,
+            projectId: project.id,
+            projectTitle: project.title,
+            title: session.proposal_title || session.initial_idea || 'Untitled Session'
+          }))
+          
+          // Update state immediately as this project's sessions load
+          if (projectSessions.length > 0) {
+            setAllSessions(prev => [...prev, ...projectSessions])
+          }
+          
+          return projectSessions
+        } catch (error) {
+          return []
+        }
+      })
+      
+      // Wait for all to complete (but state is already updating progressively)
+      await Promise.all(sessionPromises)
+    } catch (error) {
+      setAllSessions([])
+    } finally {
+      setLoadingSessions(false)
+    }
+  }
+
+  const handleSearchClick = async () => {
+    setShowSearchModal(true)
+    setModalSearchTerm("")
+    await loadAllSessions()
+  }
+
+  const handleSessionClick = (sessionId: string, projectId: string) => {
+    setShowSearchModal(false)
+    setModalSearchTerm("")
+    router.push(`/chat/${sessionId}?project=${projectId}`)
+  }
+
+  const filteredSessions = allSessions.filter(session => 
+    session.title.toLowerCase().includes(modalSearchTerm.toLowerCase()) ||
+    session.projectTitle.toLowerCase().includes(modalSearchTerm.toLowerCase())
+  )
 
   const handleDeleteProject = async (projectId: string, projectTitle: string) => {
     setCheckingDeleteProjectId(projectId);
@@ -192,7 +256,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               onClick={handleNewProjectClick}
               className="w-full bg-transparent border border-[#2a2a2a] hover:bg-[#1a1a1a] text-white justify-start"
             >
-              <Plus className="w-5 h-5" />
+              <Image src="/new-project.svg" alt="New Project" width={20} height={20} className="w-5 h-5" />
               <span className="ml-2">New Project</span>
             </Button>
           ) : (
@@ -207,7 +271,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
         )}
         {/* Collapse button in expanded mode, next to logo */}
         {!collapsed && (
-          <div className="fixed md:absolute top-4 left-[240px] md:top-2 md:right-2 group z-50" style={{maxWidth: '40px'}}>
+          <div className="absolute top-2 right-2 group z-50" style={{maxWidth: '40px'}}>
             <button
               className="p-1 rounded hover:bg-[#232326] transition-colors w-full"
               style={{ background: 'none', border: 'none' }}
@@ -233,7 +297,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                   onClick={handleNewProjectClick}
                   aria-label="New Project"
                 >
-                  <Plus className="w-6 h-6 text-gray-300" />
+                  <Image src="/new-project.svg" alt="New Project" width={24} height={24} className="w-6 h-6" />
                 </button>
                 <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
                   New Project
@@ -245,17 +309,33 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                   onClick={onBackToDashboard}
                   aria-label="New Chat"
                 >
-                  <Plus className="w-6 h-6 text-gray-300" />
+                  <Image src="/new-chat.svg" alt="New Chat" width={24} height={24} className="w-6 h-6" />
                 </button>
                 <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
                   New Chat
+                </div>
+              </div>
+              <div className="relative group">
+                <button 
+                  className="p-2 rounded hover:bg-[#232326] transition-colors" 
+                  aria-label="Search"
+                  onClick={handleSearchClick}
+                >
+                  <Search className="w-6 h-6 text-gray-300" />
+                </button>
+                <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
+                  Search
                 </div>
               </div>
             </>
           ) : (
             <>
               <div className="relative group">
-                <button className="p-2 rounded hover:bg-[#232326] transition-colors" aria-label="Search">
+                <button 
+                  className="p-2 rounded hover:bg-[#232326] transition-colors" 
+                  aria-label="Search"
+                  onClick={handleSearchClick}
+                >
                   <Search className="w-6 h-6 text-gray-300" />
                 </button>
                 <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
@@ -292,12 +372,12 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
                 onClick={onBackToDashboard}
               >
-                <Plus className="w-4 h-4" />
+                <Image src="/new-chat.svg" alt="New Chat" width={16} height={16} className="w-4 h-4" />
                 <span className="text-sm">New Chat</span>
               </div>
               <div
                 className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
-                onClick={() => setShowSearchInput((v) => !v)}
+                onClick={handleSearchClick}
               >
                 <Search className="w-4 h-4" />
                 <span className="text-sm">Search</span>
@@ -506,6 +586,70 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               >
                 {isCreatingProject ? "Creating..." : "Create Project"}
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Search Modal */}
+      <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>
+        <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-white">Search Projects</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 flex-1 flex flex-col min-h-0">
+            {/* Search Input */}
+            <div className="flex items-center gap-2">
+              <Input
+                autoFocus
+                value={modalSearchTerm}
+                onChange={e => setModalSearchTerm(e.target.value)}
+                placeholder="Search chats by title or project..."
+                className="bg-[#0a0a0a] border-[#2a2a2a] text-white focus:border-[#3a3a3a]"
+              />
+            </div>
+            
+            {/* Sessions List */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {loadingSessions && allSessions.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="text-gray-400 text-sm">Loading projects...</div>
+                  </div>
+                </div>
+              ) : filteredSessions.length > 0 ? (
+                <div className="space-y-1">
+                  {filteredSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      onClick={() => handleSessionClick(session.id, session.projectId)}
+                      className="flex items-center space-x-3 p-3 hover:bg-[#232326] cursor-pointer rounded-lg transition-colors group"
+                    >
+                      <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white truncate group-hover:text-blue-400 transition-colors">
+                          {session.title}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">
+                          {session.projectTitle}
+                        </p>
+                      </div>
+                      <div className="text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-gray-400 text-center">
+                    {modalSearchTerm ? 'No chats found matching your search' : 'No chats available'}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </DialogContent>

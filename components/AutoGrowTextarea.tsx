@@ -29,8 +29,7 @@ export default function AutoGrowTextarea({ value, setValue, placeholder, onKeyDo
       onKeyDown={onKeyDown}
       rows={1}
       placeholder={placeholder || "Add your Prompt here..."}
-      className="min-h-[45px] text-sm max-h-32 resize-none bg-[#1a1a1a]  border-[#2a2a2a] text-white placeholder-gray-400 pt-3 ps-3 rounded-md w-full flex items-center"
-      style={{ display: 'flex', alignItems: 'center' }}
+      className="min-h-[40px] text-sm max-h-32 resize-none bg-transparent border-0 text-white placeholder-gray-500 px-2 pt-3 pb-2 rounded-lg w-full focus:outline-none focus:ring-0"
     />
   )
 }

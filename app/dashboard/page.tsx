@@ -76,19 +76,56 @@ function DashboardContent() {
   }
 
 
+  // Suggested prompts
+  const suggestedPrompts = [
+    { text: "Generate a comprehensive project proposal" },
+    { text: "Create a business plan document" },
+    { text: "Build a detailed project timeline" },
+    { text: "Develop a project scope document" },
+    { text: "Create a requirements specification" },
+    { text: "Design a technical architecture" },
+    { text: "Generate a project budget estimate" },
+    { text: "Create a project roadmap" }
+  ]
+
   return (
     <div className="flex-1 flex items-center justify-center min-h-screen bg-[#0a0a0a]">
-      {/* Loader overlay */}
+      {/* Full Screen Loader */}
       {showLoader && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60">
-          <div className="w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a0a0a]/95 backdrop-blur-sm">
+          <div className="flex flex-col items-center justify-center space-y-6">
+            {/* Large Spinner */}
+            <div className="relative">
+              <div className="w-20 h-20 border-4 border-green-600/30 rounded-full"></div>
+              <div className="w-20 h-20 border-4 border-green-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+            </div>
+            
+            {/* Loading Text */}
+            <div className="flex flex-col items-center space-y-2">
+              <h2 className="text-xl font-semibold text-white">Creating your project...</h2>
+              <p className="text-sm text-gray-400">Please wait while we set everything up</p>
+            </div>
+          </div>
         </div>
       )}
-      <div className="max-w-2xl w-full mx-auto text-center space-y-2 p-8">
-        <h1 className="text-4xl font-extrabold text-white drop-shadow-lg">What do you want to create?</h1>
-        <p className="text-lg text-gray-400 mb-4">Start building with a single prompt. No coding needed.</p>
-     
-        <div className="w-full max-w-xl mx-auto">
+      
+      {/* Main Content Area - No Container Background */}
+      <div className="w-full max-w-4xl mx-auto p-8 md:p-12">
+        {/* Greeting Section */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold text-gray-300 mb-2">
+            Hi, {user?.first_name || user?.username || 'there'}
+          </h2>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">
+            What can I help you with?
+          </h1>
+          <p className="text-base text-gray-400">
+            Choose a prompt below or write your own to start chatting with Ilham AI.
+          </p>
+        </div>
+
+        {/* Input Area */}
+        <div className="mb-8">
           <ChatInterface
             sessionId={null}
             projectId={null}
@@ -97,6 +134,26 @@ function DashboardContent() {
             isWelcomeMode={true}
             onDocumentGenerated={undefined}
           />
+        </div>
+
+        {/* Suggested Prompts Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+          {suggestedPrompts.map((prompt, index) => (
+            <button
+              key={index}
+              onClick={() => handleNewChat(prompt.text)}
+              className="flex items-center gap-3 p-4 bg-[#1a1a1a] hover:bg-[#232326] border border-[#2a2a2a] rounded-xl text-left transition-all duration-200 hover:border-green-600 group"
+            >
+              <span className="text-sm font-medium text-gray-300 group-hover:text-white">
+                {prompt.text}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="text-center text-sm text-gray-500 pt-4 border-t border-[#2a2a2a]">
+          <p>2024 Ilham AI · Privacy Policy · Support</p>
         </div>
       </div>
     </div>
