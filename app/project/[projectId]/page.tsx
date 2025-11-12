@@ -8,9 +8,11 @@ import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Plus, MessageSquare, FileText, Loader2, Trash2 } from "lucide-react"
-import { getProjectSessions, deleteSession, createSession, type CreateSessionRequest } from "@/lib/api"
+import { getProjectSessions, deleteSession, createSession, type CreateSessionRequest, communicateWithMasterAgent } from "@/lib/api"
 
 // Local Session interface that matches what ProjectSidebar expects
 interface LocalSession {
@@ -48,6 +50,9 @@ function ProjectSessionsContent() {
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null)
   const [isDeletingSession, setIsDeletingSession] = useState(false)
   const [checkingDeleteSessionId, setCheckingDeleteSessionId] = useState<string | null>(null)
+  const [showPopup, setShowPopup] = useState(false)
+  const [popupInitialIdea, setPopupInitialIdea] = useState("")
+  const [popupMessage, setPopupMessage] = useState("")
 
   // Find the current project
   const currentProject = projects.find(p => p.id === projectId)
@@ -111,25 +116,66 @@ function ProjectSessionsContent() {
     router.push(`/chat/${sessionId}?project=${projectId}`)
   }
 
-  const handleNewSession = async () => {
-    if (!projectId) return
+  const handleNewSession = () => {
+    // Show popup first
+    setShowPopup(true)
+    setPopupInitialIdea("")
+    setPopupMessage("")
+  }
+
+  const handlePopupSubmit = async () => {
+    if (!projectId || !popupInitialIdea.trim() || !popupMessage.trim()) return
 
     setCreatingSession(true)
+    setShowPopup(false)
     try {
-      
       const sessionData: CreateSessionRequest = {
         project_id: projectId,
-        initial_idea: "New conversation",
+        initial_idea: popupInitialIdea.trim(),
         agent_mode: "conversation"
       }
       
       const newSession = await createSession(sessionData)
-     
+      
+      // Call communicate API after session is created with popup values
+      try {
+        const communicateResponse = await communicateWithMasterAgent({
+          session_id: newSession.id,
+          project_id: projectId,
+          message: popupMessage.trim(),
+          initial_idea: popupInitialIdea.trim()
+        })
+        
+        // Store communicate response in sessionStorage to handle it on chat page
+        if (communicateResponse) {
+          sessionStorage.setItem('pendingCommunicateResponse', JSON.stringify({
+            message: communicateResponse.message,
+            proposal_html: communicateResponse.proposal_html,
+            proposal_title: communicateResponse.proposal_title,
+            session_id: communicateResponse.session_id
+          }))
+        }
+      } catch (communicateError) {
+        console.error("Error calling communicate API:", communicateError)
+        // Continue even if communicate API fails
+      }
+      
+      // Store message in sessionStorage to display it in chat
+      sessionStorage.setItem('pendingMessage', popupMessage.trim())
+      sessionStorage.setItem('pendingSessionId', newSession.id)
+      
       router.push(`/chat/${newSession.id}?project=${projectId}`)
     } catch (error) {
+      setShowPopup(true) // Show popup again on error
     } finally {
       setCreatingSession(false)
     }
+  }
+
+  const handlePopupCancel = () => {
+    setShowPopup(false)
+    setPopupInitialIdea("")
+    setPopupMessage("")
   }
 
   const handleProjectSelect = (projectId: string) => {
@@ -378,6 +424,84 @@ function ProjectSessionsContent() {
             </div>
         )}
       </div>
+
+      {/* New Session Popup */}
+      <Dialog open={showPopup} onOpenChange={setShowPopup}>
+        <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-white">New Session Details</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Please provide your initial idea and message to start a new session
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="initial_idea" className="text-sm font-medium text-gray-300">
+                Initial Idea *
+              </Label>
+              <Textarea
+                id="initial_idea"
+                value={popupInitialIdea}
+                onChange={(e) => setPopupInitialIdea(e.target.value)}
+                placeholder="Describe your project idea..."
+                rows={4}
+                className="bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder:text-gray-500 focus:border-green-500 focus:ring-green-500/20 resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && popupInitialIdea.trim() && popupMessage.trim()) {
+                    e.preventDefault()
+                    handlePopupSubmit()
+                  }
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="message" className="text-sm font-medium text-gray-300">
+                Message *
+              </Label>
+              <Textarea
+                id="message"
+                value={popupMessage}
+                onChange={(e) => setPopupMessage(e.target.value)}
+                placeholder="Enter your message..."
+                rows={3}
+                className="bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder:text-gray-500 focus:border-green-500 focus:ring-green-500/20 resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && popupInitialIdea.trim() && popupMessage.trim()) {
+                    e.preventDefault()
+                    handlePopupSubmit()
+                  }
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handlePopupCancel}
+                className="border-[#2a2a2a] text-gray-300 hover:bg-[#2a2a2a]"
+                disabled={creatingSession}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handlePopupSubmit}
+                disabled={!popupInitialIdea.trim() || !popupMessage.trim() || creatingSession}
+                className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creatingSession ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Session"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Session Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

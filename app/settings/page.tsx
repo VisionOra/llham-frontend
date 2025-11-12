@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
-import { DollarSign, Clock, FileText, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
-import { projectApi, TokenManager } from "@/lib/api"
+import { DollarSign, Clock, FileText, AlertCircle, CheckCircle, Loader2, Users } from "lucide-react"
+import { projectApi, TokenManager, getSessionAgents } from "@/lib/api"
+import { useWebSocket } from "@/contexts/websocket-context"
 
 const currencies = [
   { code: "USD", name: "US Dollar", flag: "🇺🇸", symbol: "$" },
@@ -80,8 +81,10 @@ const SettingsPage = () => {
   const [error, setError] = useState("")
   const [isNew, setIsNew] = useState(false)
   const [success, setSuccess] = useState("")
+  const [agents, setAgents] = useState<any[]>([])
+  const [loadingAgents, setLoadingAgents] = useState(false)
 
-
+  const { activeSessionId } = useWebSocket()
 
   // Use TokenManager for access token, matching the rest of the app
   const token = TokenManager.getAccessToken();
@@ -111,6 +114,31 @@ const SettingsPage = () => {
     fetchSettings()
     // eslint-disable-next-line
   }, [])
+
+  // Fetch agents when active session is available
+  useEffect(() => {
+    const fetchAgents = async () => {
+      if (!activeSessionId) {
+        setAgents([])
+        return
+      }
+
+      setLoadingAgents(true)
+      try {
+        const response = await getSessionAgents(activeSessionId)
+        // Response has configs array, not agents
+        setAgents(response.configs || [])
+      } catch (error) {
+        console.error("Error fetching agents:", error)
+        // Silently fail if no agents found or error
+        setAgents([])
+      } finally {
+        setLoadingAgents(false)
+      }
+    }
+
+    fetchAgents()
+  }, [activeSessionId])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -436,6 +464,73 @@ const SettingsPage = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Session Agents Section */}
+            {activeSessionId && (
+              <Card className="bg-[#1a1a1a] border-[#2a2a2a]">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Users className="w-5 h-5" />
+                    Session Agents
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Agents associated with the current active session
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loadingAgents ? (
+                    <div className="flex items-center justify-center p-8">
+                      <div className="flex items-center gap-3 text-gray-400">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span>Loading agents...</span>
+                      </div>
+                    </div>
+                  ) : agents.length > 0 ? (
+                    <div className="space-y-3">
+                      {agents.map((config) => (
+                        <div
+                          key={config.id}
+                          className="p-4 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-white font-medium">{config.agent_type.display_name}</h4>
+                                {config.agent_type.is_always_active && (
+                                  <span className="px-2 py-0.5 rounded text-xs bg-blue-900/30 text-blue-300 border border-blue-700/50">
+                                    Always Active
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-gray-400 text-sm mt-1">{config.agent_type.description}</p>
+                              <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                <span>Order: {config.execution_order}</span>
+                                {config.agent_type.section_types.length > 0 && (
+                                  <span>Sections: {config.agent_type.section_types.join(", ")}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2 ml-4">
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                config.is_enabled 
+                                  ? 'bg-green-900/30 text-green-300 border border-green-700/50'
+                                  : 'bg-gray-900/30 text-gray-300 border border-gray-700/50'
+                              }`}>
+                                {config.is_enabled ? 'Enabled' : 'Disabled'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center p-8 text-gray-400">
+                      <p>No agents found for this session.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 pt-6">

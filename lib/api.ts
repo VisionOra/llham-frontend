@@ -297,7 +297,7 @@ export interface PaginatedProjectsResponse {
 
 export async function getUserProjects(): Promise<PaginatedProjectsResponse> {
   try {
-    const response = await projectApi.get<PaginatedProjectsResponse>('/projects/', {
+    const response = await projectApi.get<PaginatedProjectsResponse>('/api/proposals/projects/', {
       maxRedirects: 0,
     });
     return response.data;
@@ -305,7 +305,7 @@ export async function getUserProjects(): Promise<PaginatedProjectsResponse> {
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       try {
-        const directResponse = await axios.get<PaginatedProjectsResponse>(`${API_BASE_URL}/projects/`, {
+        const directResponse = await axios.get<PaginatedProjectsResponse>(`${API_BASE_URL}/api/proposals/projects/`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -327,7 +327,7 @@ export async function getUserProjects(): Promise<PaginatedProjectsResponse> {
 
 export async function getUserProjectsPaginated(page: number = 1): Promise<PaginatedProjectsResponse> {
   try {
-    const response = await projectApi.get<PaginatedProjectsResponse>(`/projects/?page=${page}`, {
+    const response = await projectApi.get<PaginatedProjectsResponse>(`/api/proposals/projects/?page=${page}`, {
       maxRedirects: 0,
     });
     return response.data;
@@ -335,7 +335,7 @@ export async function getUserProjectsPaginated(page: number = 1): Promise<Pagina
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       try {
-        const directResponse = await axios.get<PaginatedProjectsResponse>(`${API_BASE_URL}/projects/?page=${page}`, {
+        const directResponse = await axios.get<PaginatedProjectsResponse>(`${API_BASE_URL}/api/proposals/projects/?page=${page}`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -357,9 +357,27 @@ export async function getUserProjectsPaginated(page: number = 1): Promise<Pagina
 
 export async function createProject(projectData: CreateProjectRequest): Promise<Project> {
   try {
-    const response = await projectApi.post<Project>('/projects/', projectData);
+    const response = await projectApi.post<Project>('/api/proposals/projects/', projectData);
     return response.data;
   } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.post<Project>(`${API_BASE_URL}/api/proposals/projects/`, projectData, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+            'ngrok-skip-browser-warning': 'true',
+          },
+          timeout: 10000,
+        });
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to create project. Please try again.");
+      }
+    }
+    
     if (error instanceof Error && error.message.includes("session has expired")) {
       throw error;
     }
@@ -369,9 +387,27 @@ export async function createProject(projectData: CreateProjectRequest): Promise<
 
 export async function getProject(id: string): Promise<Project> {
   try {
-    const response = await projectApi.get<Project>(`/projects/${id}/`);
+    const response = await projectApi.get<Project>(`/api/proposals/projects/${id}/`);
     return response.data;
   } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.get<Project>(`${API_BASE_URL}/api/proposals/projects/${id}/`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+            'ngrok-skip-browser-warning': 'true',
+          },
+          timeout: 10000,
+        });
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to load project. Please try again.");
+      }
+    }
+    
     if (error instanceof Error && error.message.includes("session has expired")) {
       throw error;
     }
@@ -532,6 +568,58 @@ export async function getSessionHistory(sessionId: string): Promise<any> {
   }
 }
 
+export interface CommunicateWithMasterAgentRequest {
+  session_id: string;
+  project_id?: string;
+  message: string;
+  initial_idea?: string;
+}
+
+export interface CommunicateWithMasterAgentResponse {
+  action: string;
+  message: string;
+  session_id: string;
+  proposal_html?: string;
+  proposal_title?: string;
+  agents_rerun?: string[];
+  ready_for_proposal: boolean;
+  suggestion?: string;
+  status: string;
+  requires_initial_idea: boolean;
+  initial_idea_set: boolean;
+}
+
+export async function communicateWithMasterAgent(data: CommunicateWithMasterAgentRequest): Promise<CommunicateWithMasterAgentResponse> {
+  try {
+    const response = await projectApi.post<CommunicateWithMasterAgentResponse>(`/api/proposals/master-agent/communicate/`, data);
+    return response.data;
+  } catch (error) {
+    
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.post<CommunicateWithMasterAgentResponse>(`${API_BASE_URL}/api/proposals/master-agent/communicate/`, data, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+            'ngrok-skip-browser-warning': 'true',
+          },
+          timeout: 10000,
+        });
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to communicate with master agent. Please try again.");
+      }
+    }
+    
+    if (error instanceof Error && error.message.includes("session has expired")) {
+      throw error;
+    }
+    throw new Error("Failed to communicate with master agent. Please try again.");
+  }
+}
+
 export interface CreateSessionRequest {
   project_id: string;
 }
@@ -606,6 +694,144 @@ export async function deleteSession(sessionId: string): Promise<void> {
       throw new Error(error.response?.data?.message || 'Failed to delete session');
     }
     throw new Error("Failed to delete session. Please try again.");
+  }
+}
+
+// Proposed HTML Response Interface
+export interface ProposedHtmlResponse {
+  session_id: string;
+  project_id: string;
+  proposal_title: string;
+  html_content: string;
+  metadata: {
+    is_generated: boolean;
+    current_stage: string;
+    last_updated: string;
+    created_at: string;
+    agent_responses_count: number;
+    has_edits: boolean;
+    initial_idea: string;
+    agents_included: Array<any>;
+  };
+}
+
+// Get Proposed HTML for a session
+export async function getProposedHtml(projectId: string, sessionId: string): Promise<ProposedHtmlResponse> {
+  try {
+    const response = await projectApi.get<ProposedHtmlResponse>(
+      `/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/`
+    );
+    return response.data;
+  } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.get<ProposedHtmlResponse>(
+          `${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+              'ngrok-skip-browser-warning': 'true',
+            },
+            timeout: 10000,
+          }
+        );
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to load proposed HTML. Please try again.");
+      }
+    }
+    
+    if (error instanceof AxiosError) {
+      // Handle 404 - proposal not generated yet
+      if (error.response?.status === 404) {
+        throw new Error("Proposal not generated yet.");
+      }
+      throw new Error(error.response?.data?.message || 'Failed to load proposed HTML');
+    }
+    
+    if (error instanceof Error && error.message.includes("session has expired")) {
+      throw error;
+    }
+    throw new Error("Failed to load proposed HTML. Please try again.");
+  }
+}
+
+// Get Agents for a Session
+export interface AgentType {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  default_order: number;
+  is_always_active: boolean;
+  can_be_disabled: boolean;
+  section_types: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionAgentConfig {
+  id: string;
+  session: string;
+  agent_type: AgentType;
+  is_enabled: boolean;
+  execution_order: number;
+  custom_prompt: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionAgentsResponse {
+  session_id: string;
+  configs: SessionAgentConfig[];
+  total_count: number;
+  enabled_count: number;
+}
+
+// Get agents for a specific session
+export async function getSessionAgents(sessionId: string): Promise<SessionAgentsResponse> {
+  try {
+    const response = await projectApi.get<SessionAgentsResponse>(
+      `/api/proposals/sessions/${sessionId}/agents/`
+    );
+    return response.data;
+  } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.get<SessionAgentsResponse>(
+          `${API_BASE_URL}/api/proposals/sessions/${sessionId}/agents/`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+              'ngrok-skip-browser-warning': 'true',
+            },
+            timeout: 10000,
+          }
+        );
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to load session agents. Please try again.");
+      }
+    }
+    
+    if (error instanceof AxiosError) {
+      // Handle 404 - no agents found
+      if (error.response?.status === 404) {
+        throw new Error("No agents found for this session.");
+      }
+      throw new Error(error.response?.data?.message || 'Failed to load session agents');
+    }
+    
+    if (error instanceof Error && error.message.includes("session has expired")) {
+      throw error;
+    }
+    throw new Error("Failed to load session agents. Please try again.");
   }
 }
 

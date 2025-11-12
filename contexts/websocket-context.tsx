@@ -15,12 +15,15 @@ interface WebSocketContextType {
   currentDocument: any | null
   agentMode: string
   activeSessionId: string | null
+  activeProjectId: string | null
+  initialIdea: string | null
   latestEditSuggestion: ChatMessage | null
   isTyping: boolean
   pendingMessage: string | null
   sendMessage: (type: string, message: string, pdfFiles: any[], documentContext?: string | null) => void
   sendRawMessage: (message: any) => boolean
   setPendingMessage: (message: string | null) => void
+  addMessage: (message: ChatMessage) => void
   acceptEdit: (editId: string) => void
   rejectEdit: (editId: string) => void
   requestEdit: (selectedText: string, documentContext: string) => void
@@ -46,6 +49,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [agentMode, setAgentMode] = useState<string>('conversation')
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const [initialIdea, setInitialIdea] = useState<string | null>(null)
   const [latestEditSuggestion, setLatestEditSuggestion] = useState<ChatMessage | null>(null)
   const [isTyping, setIsTyping] = useState(false)
   const [currentStreamingMessage, setCurrentStreamingMessage] = useState<ChatMessage | null>(null)
@@ -57,6 +61,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const currentMessageIdRef = useRef<string | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const messageCounter = useRef(0)
+  const loadingSessionRef = useRef<Set<string>>(new Set())
  
 
   const fetchGeneratedDocument = useCallback(async (sessionId: string) => {
@@ -215,17 +220,32 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
               break
 
             case 'ai_message':
-              setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                type: 'ai',
-                content: data.message,
-                timestamp: new Date(),
-                sessionId: data.session_id,
-                projectId: data.project_id,
-                suggestedQuestions: data.suggested_questions,
-                suggestions: data.suggested_questions,
-                isStreaming: false
-              }])
+              setMessages(prev => {
+                // Check if this AI message already exists to prevent duplicates
+                const isDuplicate = prev.some(msg => 
+                  msg.type === 'ai' && 
+                  msg.content === data.message && 
+                  msg.sessionId === data.session_id &&
+                  // Check if message was added within last 5 seconds
+                  Math.abs(new Date(msg.timestamp).getTime() - Date.now()) < 5000
+                )
+                
+                if (isDuplicate) {
+                  return prev // Don't add duplicate
+                }
+                
+                return [...prev, {
+                  id: Date.now().toString(),
+                  type: 'ai',
+                  content: data.message,
+                  timestamp: new Date(),
+                  sessionId: data.session_id,
+                  projectId: data.project_id,
+                  suggestedQuestions: data.suggested_questions,
+                  suggestions: data.suggested_questions,
+                  isStreaming: false
+                }]
+              })
               setAgentMode(data.agent_mode || 'conversation')
               setIsTyping(false)
               break
@@ -533,15 +553,30 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       
       const displayMessage = documentContext ? `${documentContext} ${message}` : message
       
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'user',
-        content: displayMessage,
-        timestamp: new Date(),
-        sessionId: activeSessionId || undefined,
-        projectId: activeProjectId || undefined,
-        isStreaming: false
-      }])
+      setMessages(prev => {
+        // Check if this user message already exists to prevent duplicates
+        const isDuplicate = prev.some(msg => 
+          msg.type === 'user' && 
+          msg.content === displayMessage && 
+          msg.sessionId === activeSessionId &&
+          // Check if message was added within last 5 seconds
+          Math.abs(new Date(msg.timestamp).getTime() - Date.now()) < 5000
+        )
+        
+        if (isDuplicate) {
+          return prev // Don't add duplicate
+        }
+        
+        return [...prev, {
+          id: Date.now().toString(),
+          type: 'user',
+          content: displayMessage,
+          timestamp: new Date(),
+          sessionId: activeSessionId || undefined,
+          projectId: activeProjectId || undefined,
+          isStreaming: false
+        }]
+      })
     } else {
     }
   }, [socket, activeSessionId, activeProjectId])
@@ -602,6 +637,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    // Prevent duplicate resume API calls for the same session
+    if (loadingSessionRef.current.has(sessionId)) {
+      return
+    }
+
+    // Mark session as loading immediately to prevent duplicate calls
+    loadingSessionRef.current.add(sessionId)
+
     // Close existing connection if different session
     if (socket && activeSessionId !== sessionId) {
       socket.close(1000)
@@ -622,6 +665,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setLatestEditSuggestion(null)
     
     if (!sessionId.startsWith('temp-')) {
+      
       try {
         const sessionData = await getSessionHistory(sessionId)
         
@@ -666,7 +710,17 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           fetchGeneratedDocument(sessionId)
         }
         
+        // Store initial_idea from session data
+        if (sessionData.session_data?.initial_idea) {
+          setInitialIdea(sessionData.session_data.initial_idea)
+        } else if (sessionData.initial_idea) {
+          setInitialIdea(sessionData.initial_idea)
+        }
+        
       } catch (error) {
+      } finally {
+        // Remove from loading set after API call completes
+        loadingSessionRef.current.delete(sessionId)
       }
     }
     
@@ -687,10 +741,12 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     
     setActiveSessionId(null)
     setActiveProjectId(null)
+    setInitialIdea(null)
     setConnectionStatus('disconnected')
     setMessages([])
     setCurrentDocument(null)
     fetchedDocumentsRef.current.clear()
+    loadingSessionRef.current.clear()
     setIsGeneratingProposal(false)
     setCurrentStage(null)
     setProgress(0)
@@ -708,6 +764,26 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     setMessages([])
     messageCounter.current = 0
     currentMessageIdRef.current = null
+  }, [])
+
+  const addMessage = useCallback((message: ChatMessage) => {
+    setMessages(prev => {
+      // Check if message already exists (by content, type, and sessionId to prevent duplicates)
+      const isDuplicate = prev.some(msg => 
+        msg.type === message.type && 
+        msg.content === message.content && 
+        msg.sessionId === message.sessionId &&
+        // Allow messages within 5 seconds to be considered duplicates (same message sent twice quickly)
+        Math.abs(new Date(msg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 5000
+      )
+      
+      if (isDuplicate) {
+        return prev // Don't add duplicate
+      }
+      
+      return [...prev, message]
+    })
+    setIsTyping(false)
   }, [])
 
   useEffect(() => {
@@ -737,12 +813,15 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     currentDocument,
     agentMode,
     activeSessionId,
+    activeProjectId,
+    initialIdea,
     latestEditSuggestion,
     isTyping,
     pendingMessage,
     sendMessage,
     sendRawMessage,
     setPendingMessage,
+    addMessage,
     acceptEdit,
     rejectEdit,
     requestEdit,
