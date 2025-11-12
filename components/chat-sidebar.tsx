@@ -198,7 +198,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
 
   return (
     <div
-      className={`bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col h-full transition-all duration-200 ${collapsed ? 'w-[64px] min-w-[64px]' : 'w-[256px] min-w-[256px]'} relative md:relative z-20
+      className={`bg-[#0a0a0a] border-r border-[#2a2a2a] flex flex-col h-full transition-all duration-200 ${collapsed ? 'w-[64px] min-w-[64px]' : 'w-[256px] min-w-[256px]'} relative md:relative z-20 overflow-visible
         ${!collapsed ? 'fixed top-0 left-0 h-screen max-h-screen md:static md:h-full md:max-h-full' : ''}
         ${!collapsed ? 'shadow-2xl' : ''}
         ${!collapsed ? 'md:shadow-none' : ''}
@@ -210,7 +210,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
     >
 
       {/* Header */}
-  <div className={`p-4 border-b border-[#2a2a2a]${collapsed ? ' flex flex-col items-center justify-center px-2 py-4' : ' flex flex-col items-start justify-between'}`}
+  <div className={`p-4 border-b border-[#2a2a2a] relative overflow-visible${collapsed ? ' flex flex-col items-center justify-center px-2 py-4' : ' flex flex-col items-start justify-between'}`}
   >
         <span
           className={`flex items-center${collapsed ? ' justify-center mb-2 relative' : ' space-x-2 mb-4'} hover:cursor-pointer`}
@@ -243,8 +243,21 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 <span className="text-black text-xs font-bold"><img src="/logo.svg" alt="Icon" /></span>
               </span>
               {!collapsed && (
-                <span className="flex items-center space-x-1">
+                <span className="flex items-center space-x-2 flex-1">
                   <span className=" font-medium tracking-widest">Ilham</span>
+                  <div className="group ml-auto mr-3">
+                    <button
+                      className="p-1.5 rounded hover:bg-[#232326] transition-colors"
+                      style={{ background: 'none', border: 'none' }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setCollapsed(true)
+                      }}
+                      aria-label="Collapse sidebar"
+                    >
+                      <SidebarToggleIcon className="w-6 h-6 text-white hover:cursor-pointer hover:text-gray-400" />
+                    </button>
+                  </div>
                 </span>
               )}
             </>
@@ -268,22 +281,6 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               <span className="ml-2">Back to Dashboard</span>
             </Button>
           )
-        )}
-        {/* Collapse button in expanded mode, next to logo */}
-        {!collapsed && (
-          <div className="absolute top-2 right-2 group z-50" style={{maxWidth: '40px'}}>
-            <button
-              className="p-1 rounded hover:bg-[#232326] transition-colors w-full"
-              style={{ background: 'none', border: 'none' }}
-              onClick={() => setCollapsed(true)}
-              aria-label="Collapse sidebar"
-            >
-              <SidebarToggleIcon className="w-6 h-6 text-gray-400 hover:cursor-pointer hover:text-white" />
-            </button>
-            <div className="absolute left-10 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
-              Collapse
-            </div>
-          </div>
         )}
       </div>
 

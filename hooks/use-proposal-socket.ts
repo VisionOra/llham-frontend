@@ -24,6 +24,12 @@ export interface ChatMessage {
     edit_type: string;
   };
   showAcceptReject?: boolean;
+  // Edit history properties (for edit_history messages)
+  status?: 'accepted' | 'rejected' | 'pending';
+  section_identifier?: string;
+  original_content?: string;
+  proposed_content?: string;
+  edit_reason?: string;
 }
 
 export interface GenerationProgress {

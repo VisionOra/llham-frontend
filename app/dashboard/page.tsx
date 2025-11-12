@@ -7,8 +7,13 @@ import { ChatInterface } from "@/components/chat-interface"
 import { MainLayout } from "@/components/main-layout"
 import { useProjects } from "@/contexts/project-context"
 import { useAuth } from "@/contexts/auth-context"
-import { createProjectWithSession, type CreateProjectWithSessionRequest } from "@/lib/api"
+import { createProjectWithSession, type CreateProjectWithSessionRequest, communicateWithMasterAgent } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 
 
 function DashboardContent() {
@@ -24,6 +29,10 @@ function DashboardContent() {
   } = useWebSocket()
 
   const [showLoader, setShowLoader] = useState(false)
+  const [showPopup, setShowPopup] = useState(false)
+  const [popupInitialIdea, setPopupInitialIdea] = useState("")
+  const [popupMessage, setPopupMessage] = useState("")
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null)
   const cleanupDoneRef = useRef(false)
   const pendingMessageChecked = useRef(false)
 
@@ -51,10 +60,23 @@ function DashboardContent() {
   }, [isAuthenticated])
 
   const handleNewChat = async (message: string) => {
+    // Store the message and show popup first
+    setPendingUserMessage(message)
+    setPopupMessage(message)
+    setShowPopup(true)
+  }
+
+  const handlePopupSubmit = async () => {
+    if (!popupInitialIdea.trim() || !popupMessage.trim()) {
+      return
+    }
+
+    setShowPopup(false)
     setShowLoader(true)
+    
     try {
       const requestData: CreateProjectWithSessionRequest = {
-        initial_idea: message,
+        initial_idea: popupInitialIdea.trim(),
         agent_mode: "conversation"
       }
       const response = await createProjectWithSession(requestData)
@@ -62,9 +84,39 @@ function DashboardContent() {
       await refreshProjects()
       const newProject = response.project
       const newSession = response.session
-      setPendingMessage(message)
-      sessionStorage.setItem('pendingMessage', message)
+
+      // Call communicate API after project and session are created with popup values
+      try {
+        const communicateResponse = await communicateWithMasterAgent({
+          session_id: newSession.id,
+          project_id: newProject.id,
+          message: popupMessage.trim(),
+          initial_idea: popupInitialIdea.trim()
+        })
+        
+        // Store communicate response in sessionStorage to handle it on chat page
+        if (communicateResponse) {
+          sessionStorage.setItem('pendingCommunicateResponse', JSON.stringify({
+            message: communicateResponse.message,
+            proposal_html: communicateResponse.proposal_html,
+            proposal_title: communicateResponse.proposal_title,
+            session_id: communicateResponse.session_id
+          }))
+        }
+      } catch (communicateError) {
+        console.error("Error calling communicate API:", communicateError)
+        // Continue even if communicate API fails
+      }
+
+      // Store user message in sessionStorage to display it in chat
+      sessionStorage.setItem('pendingMessage', popupMessage.trim())
       sessionStorage.setItem('pendingSessionId', newSession.id)
+      
+      // Clear popup state
+      setPopupInitialIdea("")
+      setPopupMessage("")
+      setPendingUserMessage(null)
+      
       router.push(`/chat/${newSession.id}?project=${newProject.id}`)
     } catch (error) {
       setPendingMessage(null)
@@ -75,21 +127,73 @@ function DashboardContent() {
     }
   }
 
-
-  // Suggested prompts
-  const suggestedPrompts = [
-    { text: "Generate a comprehensive project proposal" },
-    { text: "Create a business plan document" },
-    { text: "Build a detailed project timeline" },
-    { text: "Develop a project scope document" },
-    { text: "Create a requirements specification" },
-    { text: "Design a technical architecture" },
-    { text: "Generate a project budget estimate" },
-    { text: "Create a project roadmap" }
-  ]
+  const handlePopupCancel = () => {
+    setShowPopup(false)
+    setPopupInitialIdea("")
+    setPopupMessage("")
+    setPendingUserMessage(null)
+  }
 
   return (
     <div className="flex-1 flex items-center justify-center min-h-screen bg-[#0a0a0a]">
+      {/* Initial Idea & Message Popup */}
+      <Dialog open={showPopup} onOpenChange={setShowPopup}>
+        <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-white">Project Details</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Please provide your initial idea and message to continue
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="initial_idea" className="text-sm font-medium text-gray-300">
+                Initial Idea *
+              </Label>
+              <Textarea
+                id="initial_idea"
+                value={popupInitialIdea}
+                onChange={(e) => setPopupInitialIdea(e.target.value)}
+                placeholder="Describe your project idea..."
+                rows={4}
+                className="bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder:text-gray-500 focus:border-green-500 focus:ring-green-500/20 resize-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="message" className="text-sm font-medium text-gray-300">
+                Message *
+              </Label>
+              <Textarea
+                id="message"
+                value={popupMessage}
+                onChange={(e) => setPopupMessage(e.target.value)}
+                placeholder="Enter your message..."
+                rows={3}
+                className="bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder:text-gray-500 focus:border-green-500 focus:ring-green-500/20 resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handlePopupCancel}
+                className="border-[#2a2a2a] text-gray-300 hover:bg-[#2a2a2a]"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handlePopupSubmit}
+                disabled={!popupInitialIdea.trim() || !popupMessage.trim()}
+                className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Full Screen Loader */}
       {showLoader && (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a0a0a]/95 backdrop-blur-sm">
@@ -120,7 +224,7 @@ function DashboardContent() {
             What can I help you with?
           </h1>
           <p className="text-base text-gray-400">
-            Choose a prompt below or write your own to start chatting with Ilham AI.
+            Write your message below to start chatting with Ilham AI.
           </p>
         </div>
 
@@ -134,21 +238,6 @@ function DashboardContent() {
             isWelcomeMode={true}
             onDocumentGenerated={undefined}
           />
-        </div>
-
-        {/* Suggested Prompts Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
-          {suggestedPrompts.map((prompt, index) => (
-            <button
-              key={index}
-              onClick={() => handleNewChat(prompt.text)}
-              className="flex items-center gap-3 p-4 bg-[#1a1a1a] hover:bg-[#232326] border border-[#2a2a2a] rounded-xl text-left transition-all duration-200 hover:border-green-600 group"
-            >
-              <span className="text-sm font-medium text-gray-300 group-hover:text-white">
-                {prompt.text}
-              </span>
-            </button>
-          ))}
         </div>
 
         {/* Footer */}

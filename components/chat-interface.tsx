@@ -9,6 +9,7 @@ import { FileUploadButton } from "@/components/file-upload"
 import { Send, User, Bot, FileText, Loader2, Sparkles, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { useWebSocket } from "@/contexts/websocket-context"
+import { communicateWithMasterAgent } from "@/lib/api"
 import AutoGrowTextarea from "./AutoGrowTextarea"
 
 const SUGGESTED_MESSAGES = [
@@ -79,6 +80,7 @@ interface ChatInterfaceProps {
   onTextSelect?: (selectedText: string, element: HTMLElement) => void
   selectedDocumentText?: string
   onClearSelectedText?: () => void
+  onProposalHtmlReceived?: (proposalHtml: string, proposalTitle?: string) => void
 }
 
 export const ChatInterface = React.memo(function ChatInterface({
@@ -91,6 +93,7 @@ export const ChatInterface = React.memo(function ChatInterface({
   onTextSelect,
   selectedDocumentText: externalSelectedText,
   onClearSelectedText,
+  onProposalHtmlReceived,
 }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState("")
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
@@ -124,8 +127,11 @@ export const ChatInterface = React.memo(function ChatInterface({
     currentDocument,
     agentMode,
     activeSessionId,
+    activeProjectId,
+    initialIdea,
     isTyping,
     sendMessage,
+    addMessage,
     acceptEdit,
     rejectEdit,
     requestEdit,
@@ -252,7 +258,7 @@ export const ChatInterface = React.memo(function ChatInterface({
       return;
     }
 
-    if (connectionStatus !== 'connected') {
+    if (!activeSessionId) {
       return;
     }
 
@@ -273,17 +279,74 @@ export const ChatInterface = React.memo(function ChatInterface({
     setUploadedFiles([]);
     setIsUserTyping(true);
 
-    const type = pdfFilesToSend.length > 0 ? 'pdf_upload' : 'chat_message';
+    // Prepare message for communicate API
+    const messageToSend = currentSelectedText && currentSelectedText.trim() 
+      ? `${currentSelectedText} ${inputText}`
+      : formatted.isPastedContent && formatted.userRequest && formatted.pastedText
+      ? `${formatted.pastedText} ${formatted.userRequest}`
+      : inputText;
 
+    // Add user message instantly to chat (before API call)
+    const displayMessage = currentSelectedText && currentSelectedText.trim() 
+      ? `${currentSelectedText} ${inputText}`
+      : formatted.isPastedContent && formatted.userRequest && formatted.pastedText
+      ? `${formatted.pastedText} ${formatted.userRequest}`
+      : inputText;
+
+    addMessage({
+      id: `user-${Date.now()}`,
+      type: 'user',
+      content: displayMessage,
+      timestamp: new Date(),
+      sessionId: activeSessionId || undefined,
+      projectId: activeProjectId || undefined,
+      isStreaming: false
+    });
+
+    // Clear selected text after adding message
     if (currentSelectedText && currentSelectedText.trim()) {
-      sendMessage(type, inputText, pdfFilesToSend, currentSelectedText);
       clearSelectedText();
-    } else if (formatted.isPastedContent && formatted.userRequest && formatted.pastedText) {
-      sendMessage(type, formatted.userRequest, pdfFilesToSend, formatted.pastedText);
-    } else {
-      sendMessage(type, inputText, pdfFilesToSend, null);
     }
-  }, [inputValue, isWelcomeMode, onNewChat, connectionStatus, formatMessageForDisplay, sendMessage, currentSelectedText, clearSelectedText, uploadedFiles])
+
+    try {
+      // Call communicate API first
+      const response = await communicateWithMasterAgent({
+        session_id: activeSessionId,
+        project_id: activeProjectId || undefined,
+        message: messageToSend,
+        initial_idea: initialIdea || undefined
+      });
+
+      // Handle message from response - add it to chat messages
+      if (response.message) {
+        addMessage({
+          id: `api-${Date.now()}`,
+          type: 'ai',
+          content: response.message,
+          timestamp: new Date(),
+          sessionId: activeSessionId || undefined,
+          projectId: activeProjectId || undefined,
+          isStreaming: false
+        });
+      }
+
+      // Handle proposal_html if present in response
+      if (response.proposal_html && onProposalHtmlReceived) {
+        onProposalHtmlReceived(response.proposal_html, response.proposal_title);
+      }
+
+      // Always hide typing indicator after API response is received (whether message exists or not)
+      setIsUserTyping(false);
+
+      // Note: User message already added instantly above, so we don't need to send via WebSocket
+      // The communicate API handles the message, and we've already displayed the user message
+    } catch (error) {
+      console.error("Error communicating with master agent:", error);
+      setIsUserTyping(false);
+      // User message already displayed, so we don't need to send via WebSocket
+      // Error handling: message is already shown to user
+    }
+  }, [inputValue, isWelcomeMode, onNewChat, formatMessageForDisplay, addMessage, currentSelectedText, clearSelectedText, uploadedFiles, activeSessionId, activeProjectId, initialIdea, onProposalHtmlReceived])
 
   const handleFileUploaded = useCallback((file: UploadedFile) => {
     setUploadedFiles(prev => [...prev, file]);
@@ -412,30 +475,30 @@ export const ChatInterface = React.memo(function ChatInterface({
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a]">
+    <div className="flex flex-col h-full bg-[#0a0a0a] min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-[#2a2a2a]">
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2">
-            <Bot className="w-5 h-5 text-green-400" />
-            <h2 className="text-lg font-semibold text-white">{isDocumentMode ? "Document Assistant" : "Ilham AI"}</h2>
+      <div className="flex items-center justify-between p-3 sm:p-4 border-b border-[#2a2a2a] flex-shrink-0">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+          <div className="flex items-center space-x-1.5 sm:space-x-2 min-w-0">
+            <Bot className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 flex-shrink-0" />
+            <h2 className="text-base sm:text-lg font-semibold text-white truncate">{isDocumentMode ? "Document Assistant" : "Ilham AI"}</h2>
           </div>
-          <div className="flex items-center space-x-2 me-2">
-                <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? "bg-green-400" : "bg-red-400"}`} />
-                <span className="text-xs text-gray-400">{connectionStatus === 'connected' ? "Connected" : "Connecting..."}</span>
+          <div className="flex items-center space-x-1.5 sm:space-x-2 me-2 flex-shrink-0">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${connectionStatus === 'connected' ? "bg-green-400" : "bg-red-400"}`} />
+                <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">{connectionStatus === 'connected' ? "Connected" : "Connecting..."}</span>
           </div>
         </div>
 
         {sessionId && (
-          <Badge variant="outline" className="border-green-700 text-green-300 text-center flex items-center justify-center">
+          <Badge variant="outline" className="border-green-700 text-green-300 text-center flex items-center justify-center flex-shrink-0 hidden sm:flex">
             Session Active
           </Badge>
         )}
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
-        <div className="space-y-4">
+      <ScrollArea className="flex-1 p-2 sm:p-4 min-h-0 overflow-hidden">
+        <div className="space-y-3 sm:space-y-4">
           {messages.map((message) => (
             <div key={message.id} className="space-y-2">
               <div
@@ -463,9 +526,9 @@ export const ChatInterface = React.memo(function ChatInterface({
                 </div>
 
                 {/* Message Content */}
-                <div className={`flex-1 max-w-[75%] ${message.type === "user" ? "text-right" : "text-left"} break-words me-2`}>
+                <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${message.type === "user" ? "text-right" : "text-left"} break-words overflow-wrap-anywhere me-1 sm:me-2`}>
                   <div
-                    className={`inline-block p-3 rounded-lg max-w-full text-left ${
+                    className={`inline-block p-2.5 sm:p-3 rounded-lg max-w-full text-left overflow-wrap-anywhere ${
                       message.type === "user"
                         ? "bg-green-700 text-white"
                         : message.type === "ai"
@@ -478,6 +541,7 @@ export const ChatInterface = React.memo(function ChatInterface({
                                 ? "bg-red-900/30 text-red-300 border border-red-700"
                                 : "bg-blue-900/30 text-blue-300 border border-blue-700"
                     }`}
+                    style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                   >
                     {/* User messages with special formatting for pasted content */}
                     {message.type === "user" && (() => {
@@ -570,8 +634,25 @@ export const ChatInterface = React.memo(function ChatInterface({
                     
                     {/* AI and other message types - no truncation for agent messages */}
                     {message.type !== "user" && message.type !== "edit_suggestion" && (
-                      <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                      <div className="text-sm leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere">
+                        <ReactMarkdown
+                          components={{
+                            a: ({ node, ...props }) => (
+                              <a
+                                {...props}
+                                className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
+                                style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              />
+                            ),
+                            p: ({ node, ...props }) => (
+                              <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
+                            ),
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
                         {/* Show typing cursor for streaming messages */}
                         {message.id.startsWith('streaming-') && !message.suggestions && (
                           <span className="inline-block w-2 h-4 bg-green-400 ml-1 animate-pulse"></span>
@@ -605,16 +686,50 @@ export const ChatInterface = React.memo(function ChatInterface({
                           {message.editData?.original && (
                             <div className="bg-red-900/20 border border-red-500/30 rounded-md p-3 mb-2">
                               <div className="text-xs font-medium text-red-300 mb-1">ORIGINAL</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
-                                <ReactMarkdown>{message.editData.original}</ReactMarkdown>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({ node, ...props }) => (
+                                      <a
+                                        {...props}
+                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
+                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      />
+                                    ),
+                                    p: ({ node, ...props }) => (
+                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
+                                    ),
+                                  }}
+                                >
+                                  {message.editData.original}
+                                </ReactMarkdown>
                               </div>
                             </div>
                           )}
                           {message.original_content && !message.editData?.original && (
                             <div className="bg-red-900/20 border border-red-500/30 rounded-md p-3 mb-2">
                               <div className="text-xs font-medium text-red-300 mb-1">ORIGINAL</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
-                                <ReactMarkdown>{message.original_content}</ReactMarkdown>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({ node, ...props }) => (
+                                      <a
+                                        {...props}
+                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
+                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      />
+                                    ),
+                                    p: ({ node, ...props }) => (
+                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
+                                    ),
+                                  }}
+                                >
+                                  {message.original_content}
+                                </ReactMarkdown>
                               </div>
                             </div>
                           )}
@@ -622,16 +737,50 @@ export const ChatInterface = React.memo(function ChatInterface({
                           {message.editData?.proposed && (
                             <div className="bg-green-900/20 border border-green-500/30 rounded-md p-3 mb-2">
                               <div className="text-xs font-medium text-green-300 mb-1">PROPOSED</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
-                                <ReactMarkdown>{message.editData.proposed}</ReactMarkdown>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({ node, ...props }) => (
+                                      <a
+                                        {...props}
+                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
+                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      />
+                                    ),
+                                    p: ({ node, ...props }) => (
+                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
+                                    ),
+                                  }}
+                                >
+                                  {message.editData.proposed}
+                                </ReactMarkdown>
                               </div>
                             </div>
                           )}
                           {message.proposed_content && !message.editData?.proposed && (
                             <div className="bg-green-900/20 border border-green-500/30 rounded-md p-3 mb-2">
                               <div className="text-xs font-medium text-green-300 mb-1">PROPOSED</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded">
-                                <ReactMarkdown>{message.proposed_content}</ReactMarkdown>
+                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({ node, ...props }) => (
+                                      <a
+                                        {...props}
+                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
+                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      />
+                                    ),
+                                    p: ({ node, ...props }) => (
+                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
+                                    ),
+                                  }}
+                                >
+                                  {message.proposed_content}
+                                </ReactMarkdown>
                               </div>
                             </div>
                           )}
@@ -762,10 +911,10 @@ export const ChatInterface = React.memo(function ChatInterface({
       </ScrollArea>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-[#2a2a2a] ">
+      <div className="p-2 sm:p-4 border-t border-[#2a2a2a] flex-shrink-0">
         {/* Suggested Messages Pills - Only show when not in document mode */}
         {!isDocumentMode && randomSuggestedMessages.length > 0 && (
-        <div className="mb-3 w-full overflow-hidden">
+        <div className="mb-2 sm:mb-3 w-full overflow-hidden">
         <div 
           className="w-full max-w-6xl mx-auto overflow-x-auto overflow-y-hidden scrollbar-hide relative"
           style={{ 
@@ -774,12 +923,12 @@ export const ChatInterface = React.memo(function ChatInterface({
             WebkitOverflowScrolling: 'touch'
           }}
         >
-          <div className="flex gap-2 pb-2">
+          <div className="flex gap-1.5 sm:gap-2 pb-2">
             {randomSuggestedMessages.map((message, index) => (
               <button
                 key={index}
                 onClick={() => handleSuggestedMessageClick(message)}
-                className="px-4 py-2 text-sm bg-[#0a0a0a] hover:bg-[#1a1a1a] border border-[#1a1a1a] hover:border-green-700 rounded-full text-gray-500 hover:text-gray-300 transition-all duration-200 capitalize whitespace-nowrap flex-shrink-0 opacity-60 hover:opacity-100"
+                className="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm bg-[#0a0a0a] hover:bg-[#1a1a1a] border border-[#1a1a1a] hover:border-green-700 rounded-full text-gray-500 hover:text-gray-300 transition-all duration-200 capitalize whitespace-nowrap flex-shrink-0 opacity-60 hover:opacity-100"
               >
                 {message}
               </button>
@@ -792,15 +941,15 @@ export const ChatInterface = React.memo(function ChatInterface({
 
         {/* Uploaded Files Display */}
         {uploadedFiles.length > 0 && (
-          <div className="mb-4 space-y-2">
+          <div className="mb-2 sm:mb-4 space-y-2">
             <div className="text-xs text-gray-400 mb-2">Attached Files:</div>
             {uploadedFiles.map((file) => (
-              <div key={file.id} className="flex items-center space-x-3 p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg">
+              <div key={file.id} className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg">
                 <div className="flex-shrink-0">
-                  <FileText className="w-5 h-5 text-blue-400" />
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-white font-medium truncate">{file.name}</div>
+                  <div className="text-xs sm:text-sm text-white font-medium truncate">{file.name}</div>
                   <div className="text-xs text-gray-400">
                     {formatFileSize(file.size)} • {file.type}
                     {file.status === 'uploading' && (
@@ -829,7 +978,7 @@ export const ChatInterface = React.memo(function ChatInterface({
           </div>
         )}
 
-        <div className="flex items-center justify-center gap-2 min-h-[48px] sm:gap-2 gap-1 px-0 sm:px-0">
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[44px] sm:min-h-[48px]">
           <div className="flex items-center h-full flex-shrink-0 rounded-md">
             <FileUploadButton onFileUploaded={handleFileUploaded} />
           </div>
@@ -838,7 +987,7 @@ export const ChatInterface = React.memo(function ChatInterface({
               value={inputValue}
               setValue={setInputValue}
               placeholder={isDocumentMode
-                ? 'Select Text & add Your Query here (e.g., \'make it more concise\')...'
+                ? 'Select Text & add Your Query here...'
                 : 'Tell me about your project idea...'}
               onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -852,21 +1001,19 @@ export const ChatInterface = React.memo(function ChatInterface({
             <Button
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || connectionStatus !== 'connected' || isGeneratingProposal}
-              className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50 flex items-center justify-center sm:h-[45px] h-10 sm:min-w-[45px] min-w-[38px] rounded-md p-0 sm:p-0 px-2 py-2"
-              style={{ height: undefined, minWidth: undefined }}
+              className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50 flex items-center justify-center h-10 sm:h-[45px] min-w-[38px] sm:min-w-[45px] rounded-md p-2 sm:p-0"
             >
               {(connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-center mt-2">
-          <p className="text-xs text-gray-500 text-center mx-auto">
+        <div className="flex items-center justify-between text-center mt-1.5 sm:mt-2">
+          <p className="text-[10px] sm:text-xs text-gray-500 text-center mx-auto px-2">
             {isDocumentMode
-              ? "Select text in document and write your querry here"
-              : "Press Enter to send, Shift+Enter for new line • Upload PDF/Word files"}
+              ? "Select text in document and write your query here"
+              : "Press Enter to send, Shift+Enter for new line"}
           </p>
-         
         </div>
       </div>
     </div>

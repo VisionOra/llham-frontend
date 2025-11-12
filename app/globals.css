@@ -356,3 +356,13 @@
   overflow-wrap: break-word;
 }
 
+/* Fix links overflow in chat messages */
+[class*="chat"] a,
+[class*="message"] a,
+a[href] {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  display: inline-block;
+}
+
