@@ -50,6 +50,7 @@ function ChatPageContent() {
   const [proposalHtml, setProposalHtml] = useState<string | null>(null)
   const [proposalTitle, setProposalTitle] = useState<string | null>(null)
   const [showProposalPanel, setShowProposalPanel] = useState(false)
+  const [loadingProposalHtml, setLoadingProposalHtml] = useState(false)
   const [proposalPanelWidth, setProposalPanelWidth] = useState(500)
   const [isProposalPanelExpanded, setIsProposalPanelExpanded] = useState(false)
   const savedProposalPanelWidth = useRef(500)
@@ -187,29 +188,49 @@ function ChatPageContent() {
   }, [loadingDocument])
 
   // Load proposed HTML on page refresh/load
-  const loadProposedHtml = useCallback(async (sessionId: string, projectId: string | null) => {
-    if (!projectId || loadedProposedHtmlRef.current.has(sessionId)) {
+  const loadProposedHtml = useCallback(async (sessionId: string, projectId: string | null, forceReload: boolean = false) => {
+    if (!projectId) {
+      return
+    }
+
+    // Only skip if already loaded and not forcing reload
+    if (!forceReload && loadedProposedHtmlRef.current.has(sessionId)) {
+      // If we already have proposal HTML, ensure panel is shown
+      if (proposalHtml) {
+        setShowProposalPanel(true)
+      }
       return
     }
 
     try {
+      // Panel should already be shown before calling this function
+      // Just ensure loading state is set
+      setLoadingProposalHtml(true)
       loadedProposedHtmlRef.current.add(sessionId)
       const response = await getProposedHtml(projectId, sessionId)
       
       if (response.html_content) {
         setProposalHtml(response.html_content)
         setProposalTitle(response.proposal_title || 'Proposal Preview')
+        setShowProposalPanel(true) // Ensure panel is shown
+      } else {
+        // If no content, keep panel visible but show empty state
         setShowProposalPanel(true)
       }
     } catch (error) {
-      // If proposal not generated yet (404), silently fail
+      // If proposal not generated yet (404), keep panel visible with error state
       if (error instanceof Error && error.message.includes("not generated")) {
-        // Don't show error, just don't load proposal
+        // Keep panel visible but show that proposal is not generated yet
+        setShowProposalPanel(true)
         return
       }
       console.error("Error loading proposed HTML:", error)
+      // Keep panel visible even on error
+      setShowProposalPanel(true)
+    } finally {
+      setLoadingProposalHtml(false)
     }
-  }, [])
+  }, [proposalHtml])
 
   // Start session when sessionId changes (like in old code)
   useEffect(() => {
@@ -224,9 +245,45 @@ function ChatPageContent() {
           loadSessionDocument(sessionId)
         }
         
-        // Load proposed HTML on page refresh/load
-        if (projectId && !loadedProposedHtmlRef.current.has(sessionId)) {
-          loadProposedHtml(sessionId, projectId)
+        // Always show panel and load proposed HTML when session changes (force reload when coming back)
+        if (projectId) {
+          // Show panel immediately with loader
+          setShowProposalPanel(true)
+          setLoadingProposalHtml(true)
+          // Clear the ref for this session to allow reload
+          loadedProposedHtmlRef.current.delete(sessionId)
+          loadProposedHtml(sessionId, projectId, true)
+        }
+      } else {
+        // Session already started, but ensure proposal HTML is loaded if we have projectId
+        if (projectId) {
+          // Show panel immediately
+          setShowProposalPanel(true)
+          // If we already have proposal HTML, show it, otherwise load
+          if (proposalHtml) {
+            setLoadingProposalHtml(false)
+          } else {
+            setLoadingProposalHtml(true)
+            // Try to load it again
+            loadedProposedHtmlRef.current.delete(sessionId)
+            loadProposedHtml(sessionId, projectId, true)
+          }
+        }
+      }
+    } else if (sessionId && sessionId === activeSessionId) {
+      // Session is already active (e.g., coming back from settings)
+      // Ensure proposal panel is shown immediately if we have projectId
+      if (projectId) {
+        // Show panel immediately
+        setShowProposalPanel(true)
+        if (proposalHtml) {
+          // If we have proposal HTML, ensure panel is shown
+          setLoadingProposalHtml(false)
+        } else {
+          // Show loader and try to load proposal HTML again
+          setLoadingProposalHtml(true)
+          loadedProposedHtmlRef.current.delete(sessionId)
+          loadProposedHtml(sessionId, projectId, true)
         }
       }
     } else if (!sessionId && activeSessionId) {
@@ -239,7 +296,7 @@ function ChatPageContent() {
       pendingMessageProcessedRef.current.clear()
       loadedProposedHtmlRef.current.clear()
     }
-  }, [sessionId, projectId, activeSessionId, startSession, endSession, loadSessionDocument, loadProposedHtml])
+  }, [sessionId, projectId, activeSessionId, startSession, endSession, loadSessionDocument, loadProposedHtml, proposalHtml])
 
   // Check sessionStorage for pending message and communicate response when session starts
   useEffect(() => {
@@ -431,9 +488,11 @@ function ChatPageContent() {
   }
 
   const handleCloseProposalPanel = () => {
-    setShowProposalPanel(false)
-    setProposalHtml(null)
-    setProposalTitle(null)
+    // Don't actually close the panel, just keep it visible
+    // User requested that proposal panel should never be closed
+    // setShowProposalPanel(false)
+    // setProposalHtml(null)
+    // setProposalTitle(null)
     setIsProposalPanelExpanded(false)
   }
 
@@ -549,7 +608,7 @@ function ChatPageContent() {
               </div>
 
               {/* Proposal Panel (Right Side) - Desktop */}
-              {showProposalPanel && proposalHtml && (
+              {showProposalPanel && (
                 <ProposalPanel
                   proposalHtml={proposalHtml}
                   proposalTitle={proposalTitle}
@@ -566,6 +625,7 @@ function ChatPageContent() {
                   isResizingProposal={isResizingProposal}
                   onResizeStart={handleProposalResizeStart}
                   onProposalHtmlUpdate={setProposalHtml}
+                  isLoading={loadingProposalHtml}
                 />
               )}
             </>
@@ -593,7 +653,7 @@ function ChatPageContent() {
           )}
 
           {/* Proposal Panel (Right Side) - For chat only mode */}
-          {!hasDocument && showProposalPanel && proposalHtml && (
+          {!hasDocument && showProposalPanel && (
             <ProposalPanel
               proposalHtml={proposalHtml}
               proposalTitle={proposalTitle}
@@ -610,6 +670,7 @@ function ChatPageContent() {
               isResizingProposal={isResizingProposal}
               onResizeStart={handleProposalResizeStart}
               onProposalHtmlUpdate={setProposalHtml}
+              isLoading={loadingProposalHtml}
             />
           )}
         </div>

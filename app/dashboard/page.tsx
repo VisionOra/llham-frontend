@@ -135,7 +135,7 @@ function DashboardContent() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center min-h-screen bg-[#0a0a0a]">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#0a0a0a]">
       {/* Initial Idea & Message Popup */}
       <Dialog open={showPopup} onOpenChange={setShowPopup}>
         <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white max-w-2xl">
@@ -214,36 +214,38 @@ function DashboardContent() {
       )}
       
       {/* Main Content Area - No Container Background */}
-      <div className="w-full max-w-4xl mx-auto p-8 md:p-12">
-        {/* Greeting Section */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold text-gray-300 mb-2">
-            Hi, {user?.first_name || user?.username || 'there'}
-          </h2>
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">
-            What can I help you with?
-          </h1>
-          <p className="text-base text-gray-400">
-            Write your message below to start chatting with Ilham AI.
-          </p>
-        </div>
+      <div className="flex-1 flex items-center justify-center w-full">
+        <div className="w-full max-w-4xl mx-auto p-8 md:p-12">
+          {/* Greeting Section */}
+          <div className="mb-8">
+            <h2 className="text-2xl font-semibold text-gray-300 mb-2">
+              Hi, {user?.first_name || user?.username || 'there'}
+            </h2>
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">
+              What can I help you with?
+            </h1>
+            <p className="text-base text-gray-400">
+              Write your message below to start chatting with Ilham AI.
+            </p>
+          </div>
 
-        {/* Input Area */}
-        <div className="mb-8">
-          <ChatInterface
-            sessionId={null}
-            projectId={null}
-            onNewChat={handleNewChat}
-            isDocumentMode={false}
-            isWelcomeMode={true}
-            onDocumentGenerated={undefined}
-          />
+          {/* Input Area */}
+          <div className="mb-8">
+            <ChatInterface
+              sessionId={null}
+              projectId={null}
+              onNewChat={handleNewChat}
+              isDocumentMode={false}
+              isWelcomeMode={true}
+              onDocumentGenerated={undefined}
+            />
+          </div>
         </div>
+      </div>
 
-        {/* Footer */}
-        <div className="text-center text-sm text-gray-500 pt-4 border-t border-[#2a2a2a]">
-          <p>2024 Ilham AI · Privacy Policy · Support</p>
-        </div>
+      {/* Footer - Fixed at bottom */}
+      <div className="w-full text-center text-sm text-gray-500 py-4 border-t border-[#2a2a2a] mt-auto">
+        <p>2024 Ilham AI · Privacy Policy · Support</p>
       </div>
     </div>
   )
