@@ -7,6 +7,7 @@ import { Suspense } from "react"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ProjectProvider } from "@/contexts/project-context"
 import { WebSocketProvider } from "@/contexts/websocket-context"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -30,6 +31,7 @@ export default function RootLayout({
             </WebSocketProvider>
           </ProjectProvider>
         </AuthProvider>
+        <Toaster position="top-right" richColors />
         {/* <Analytics /> */}
       </body>
     </html>
