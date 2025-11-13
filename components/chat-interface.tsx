@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { FileUploadButton } from "@/components/file-upload"
-import { Send, User, Bot, FileText, Loader2, Sparkles, X } from "lucide-react"
+import { Send, User, Bot, FileText, Loader2, Sparkles, X, Eye, EyeOff } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { useWebSocket } from "@/contexts/websocket-context"
 import { communicateWithMasterAgent } from "@/lib/api"
@@ -100,6 +100,7 @@ export const ChatInterface = React.memo(function ChatInterface({
   const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
   const [isUserTyping, setIsUserTyping] = useState(false)
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set())
+  const [isChatVisible, setIsChatVisible] = useState(true)
   // const [randomSuggestedMessages, setRandomSuggestedMessages] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -490,13 +491,28 @@ export const ChatInterface = React.memo(function ChatInterface({
         </div>
 
         {sessionId && (
-          <Badge variant="outline" className="border-green-700 text-green-300 text-center flex items-center justify-center flex-shrink-0 hidden sm:flex">
-            Session Active
-          </Badge>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Badge variant="outline" className="border-green-700 text-green-300 text-center flex items-center justify-center hidden sm:flex">
+              Session Active
+            </Badge>
+            <button
+              onClick={() => setIsChatVisible(!isChatVisible)}
+              className="text-gray-400 hover:text-white hover:bg-gray-900 rounded-full p-1.5 transition-colors flex-shrink-0"
+              aria-label={isChatVisible ? "Hide chat" : "Show chat"}
+              title={isChatVisible ? "Hide chat" : "Show chat"}
+            >
+              {isChatVisible ? (
+                <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" />
+              ) : (
+                <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+              )}
+            </button>
+          </div>
         )}
       </div>
 
       {/* Messages */}
+      {isChatVisible && (
       <ScrollArea className="flex-1 p-2 sm:p-4 min-h-0 overflow-hidden">
         <div className="space-y-3 sm:space-y-4">
           {messages.filter((message) => message.type !== "edit_suggestion").map((message) => (
@@ -765,8 +781,10 @@ export const ChatInterface = React.memo(function ChatInterface({
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
+      )}
 
       {/* Input Area */}
+      {isChatVisible && (
       <div className="p-2 sm:p-4 border-t border-[#2a2a2a] flex-shrink-0">
         {/* Suggested Messages Pills - Only show when not in document mode
         {!isDocumentMode && randomSuggestedMessages.length > 0 && (
@@ -872,6 +890,7 @@ export const ChatInterface = React.memo(function ChatInterface({
           </p>
         </div>
       </div>
+      )}
     </div>
   )
 })

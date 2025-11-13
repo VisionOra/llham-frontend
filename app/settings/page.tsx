@@ -98,12 +98,25 @@ const SettingsPage = () => {
           headers: { Authorization: `Bearer ${token}` },
         })
         const data = res.data
-        if (!data || Object.keys(data).length === 0) {
+        if (!data || !data.settings || Object.keys(data.settings).length === 0) {
           setIsNew(true)
           setForm(initialState)
         } else {
           setIsNew(false)
-          setForm({ ...initialState, ...data })
+          // Extract settings from nested response structure
+          const settings = data.settings
+          setForm({
+            senior_engineer_rate: settings.senior_engineer_rate || "",
+            mid_level_engineer_rate: settings.mid_level_engineer_rate || "",
+            junior_engineer_rate: settings.junior_engineer_rate || "",
+            ui_ux_designer_rate: settings.ui_ux_designer_rate || "",
+            project_manager_rate: settings.project_manager_rate || "",
+            devops_engineer_rate: settings.devops_engineer_rate || "",
+            ai_engineer_rate: settings.ai_engineer_rate || "",
+            default_instructions: settings.default_instructions || "",
+            currency: settings.currency || "",
+            max_task_hours: settings.max_task_hours || 0,
+          })
         }
       } catch (e) {
         setError("Could not load settings.")
