@@ -14,6 +14,9 @@ interface User {
   linkedin_id: string | null
   is_email_verified: boolean
   profile_picture: string | null
+  is_staff?: boolean
+  is_superuser?: boolean
+  subscription_status?: "free" | "paid"
 }
 
 interface AuthContextType {

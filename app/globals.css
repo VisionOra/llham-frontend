@@ -366,3 +366,10 @@ a[href] {
   display: inline-block;
 }
 
+/* Checkbox green color for selected state */
+input[type="checkbox"]:checked {
+  background-color: #16a34a !important;
+  border-color: #16a34a !important;
+  accent-color: #16a34a !important;
+}
+

@@ -759,7 +759,81 @@ export async function getProposedHtml(projectId: string, sessionId: string): Pro
   }
 }
 
-// Get Agents for a Session
+// Get Available Agents from Registry
+export interface AvailableAgent {
+  id?: string;
+  name: string;
+  display_name: string;
+  description: string;
+  section_types: string[];
+  default_order: number;
+  is_always_active: boolean;
+  can_be_disabled: boolean;
+  is_selected?: boolean; // Only present when session_id is provided
+}
+
+export interface AvailableAgentsResponse {
+  agents: AvailableAgent[];
+  total_count: number;
+  source: string;
+  session_id?: string; // Only present when session_id is provided
+}
+
+// Get available agents from llham-agents registry
+// If sessionId is provided, shows which agents are selected for that session
+export async function getAvailableAgents(sessionId?: string): Promise<AvailableAgentsResponse> {
+  try {
+    const url = sessionId 
+      ? `/api/proposals/agents/?session_id=${sessionId}`
+      : `/api/proposals/agents/`;
+    
+    const response = await projectApi.get<AvailableAgentsResponse>(url);
+    return response.data;
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      throw new Error(error.response?.data?.message || 'Failed to load available agents');
+    }
+    throw new Error("Failed to load available agents. Please try again.");
+  }
+}
+
+// Select Agents for Session
+export interface SelectAgentsRequest {
+  agent_names: string[];
+  auto_order?: boolean;
+}
+
+export interface SelectAgentsResponse {
+  session_id: string;
+  selected_agents: any[];
+  enabled_count: number;
+  disabled_count: number;
+  message: string;
+}
+
+// Select agents for a specific session
+export async function selectSessionAgents(
+  sessionId: string,
+  request: SelectAgentsRequest
+): Promise<SelectAgentsResponse> {
+  try {
+    const response = await projectApi.post<SelectAgentsResponse>(
+      `/api/proposals/sessions/${sessionId}/agents/select/`,
+      request
+    );
+    return response.data;
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      if (error.response?.status === 403) {
+        throw new Error("Free users are limited to 3 agents maximum.");
+      }
+      throw new Error(error.response?.data?.message || 'Failed to select agents');
+    }
+    throw new Error("Failed to select agents. Please try again.");
+  }
+}
+
+// Get Agents for a Session (Legacy - keeping for backward compatibility)
 export interface AgentType {
   id: string;
   name: string;
@@ -789,6 +863,114 @@ export interface SessionAgentsResponse {
   configs: SessionAgentConfig[];
   total_count: number;
   enabled_count: number;
+}
+
+// Admin APIs
+export interface AdminUser {
+  id: string;
+  email: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  is_active: boolean;
+  date_joined: string;
+  linkedin_id: string | null;
+  is_email_verified: boolean;
+  profile_picture: string | null;
+  subscription_status: "free" | "paid";
+}
+
+export interface AdminUsersListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  is_active?: boolean;
+  subscription_status?: "free" | "paid";
+}
+
+export interface AdminUsersListResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: AdminUser[];
+}
+
+// Get paginated list of all users (Admin only)
+export async function getAdminUsers(params?: AdminUsersListParams): Promise<AdminUsersListResponse> {
+  try {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.page_size) queryParams.append("page_size", params.page_size.toString());
+    if (params?.search) queryParams.append("search", params.search);
+    if (params?.is_active !== undefined) queryParams.append("is_active", params.is_active.toString());
+    if (params?.subscription_status) queryParams.append("subscription_status", params.subscription_status);
+
+    const url = `/api/admin/users${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+    const response = await projectApi.get<AdminUsersListResponse>(url);
+    return response.data;
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      if (error.response?.status === 403) {
+        throw new Error("Admin access required");
+      }
+      throw new Error(error.response?.data?.message || 'Failed to load users');
+    }
+    throw new Error("Failed to load users. Please try again.");
+  }
+}
+
+export interface UpdateSubscriptionRequest {
+  subscription_status: "free" | "paid";
+}
+
+// Update user subscription status (Admin only) - PUT
+export async function updateUserSubscriptionPut(
+  userId: string,
+  request: UpdateSubscriptionRequest
+): Promise<AdminUser> {
+  try {
+    const response = await projectApi.put<AdminUser>(
+      `/api/admin/users/${userId}/subscription/`,
+      request
+    );
+    return response.data;
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      if (error.response?.status === 403) {
+        throw new Error("Admin access required");
+      }
+      if (error.response?.status === 404) {
+        throw new Error("User not found");
+      }
+      throw new Error(error.response?.data?.message || 'Failed to update subscription');
+    }
+    throw new Error("Failed to update subscription. Please try again.");
+  }
+}
+
+// Update user subscription status (Admin only) - PATCH
+export async function updateUserSubscriptionPatch(
+  userId: string,
+  request: UpdateSubscriptionRequest
+): Promise<AdminUser> {
+  try {
+    const response = await projectApi.patch<AdminUser>(
+      `/api/admin/users/${userId}/subscription/`,
+      request
+    );
+    return response.data;
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      if (error.response?.status === 403) {
+        throw new Error("Admin access required");
+      }
+      if (error.response?.status === 404) {
+        throw new Error("User not found");
+      }
+      throw new Error(error.response?.data?.message || 'Failed to update subscription');
+    }
+    throw new Error("Failed to update subscription. Please try again.");
+  }
 }
 
 // Get agents for a specific session
