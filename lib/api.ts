@@ -835,5 +835,188 @@ export async function getSessionAgents(sessionId: string): Promise<SessionAgents
   }
 }
 
+// Proposal Edits Interfaces
+export interface ProposalEdit {
+  id: string;
+  session: string;
+  edit_type: string;
+  original_content: string;
+  proposed_content: string;
+  section_identifier: string;
+  edit_reason: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProposalEditsResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: ProposalEdit[];
+}
+
+export interface CreateProposalEditRequest {
+  edit_type: string;
+  original_content: string;
+  proposed_content: string;
+  section_identifier: string;
+  edit_reason: string;
+  status?: 'pending' | 'accepted' | 'rejected';
+}
+
+// Get proposal edits for a session
+export async function getProposalEdits(sessionId: string, page: number = 1): Promise<ProposalEditsResponse> {
+  try {
+    const response = await projectApi.get<ProposalEditsResponse>(
+      `/api/proposals/sessions/${sessionId}/edits/`,
+      {
+        params: { page }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.get<ProposalEditsResponse>(
+          `${API_BASE_URL}/api/proposals/sessions/${sessionId}/edits/`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+              'ngrok-skip-browser-warning': 'true',
+            },
+            params: { page },
+            timeout: 10000,
+          }
+        );
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to load proposal edits. Please try again.");
+      }
+    }
+    
+    if (error instanceof AxiosError) {
+      // Handle 404 - no edits found
+      if (error.response?.status === 404) {
+        return { count: 0, next: null, previous: null, results: [] };
+      }
+      throw new Error(error.response?.data?.message || 'Failed to load proposal edits');
+    }
+    
+    if (error instanceof Error && error.message.includes("session has expired")) {
+      throw error;
+    }
+    throw new Error("Failed to load proposal edits. Please try again.");
+  }
+}
+
+// Create a new proposal edit (deprecated - use editProposedHtml instead)
+export async function createProposalEdit(sessionId: string, editData: CreateProposalEditRequest): Promise<ProposalEdit> {
+  try {
+    const response = await projectApi.post<ProposalEdit>(
+      `/api/proposals/sessions/${sessionId}/edits/`,
+      editData
+    );
+    return response.data;
+  } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.post<ProposalEdit>(
+          `${API_BASE_URL}/api/proposals/sessions/${sessionId}/edits/`,
+          editData,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+              'ngrok-skip-browser-warning': 'true',
+            },
+            timeout: 10000,
+          }
+        );
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to create proposal edit. Please try again.");
+      }
+    }
+    
+    if (error instanceof AxiosError) {
+      throw new Error(error.response?.data?.message || 'Failed to create proposal edit');
+    }
+    
+    if (error instanceof Error && error.message.includes("session has expired")) {
+      throw error;
+    }
+    throw new Error("Failed to create proposal edit. Please try again.");
+  }
+}
+
+// Edit Proposed HTML - Replace text throughout the document
+export interface EditProposedHtmlRequest {
+  original_text: string
+  new_text: string
+  edit_reason?: string
+  section_identifier?: string
+  replace_all?: boolean
+}
+
+export interface EditProposedHtmlResponse {
+  session_id: string
+  project_id: string
+  html_content: string
+  edit_id: string
+  replacements_count: number
+  message: string
+}
+
+export async function editProposedHtml(
+  projectId: string,
+  sessionId: string,
+  editData: EditProposedHtmlRequest
+): Promise<EditProposedHtmlResponse> {
+  try {
+    const response = await projectApi.post<EditProposedHtmlResponse>(
+      `/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/edit/`,
+      editData
+    );
+    return response.data;
+  } catch (error) {
+    // If it's a redirect error, try the direct approach
+    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
+      try {
+        const directResponse = await axios.post<EditProposedHtmlResponse>(
+          `${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/edit/`,
+          editData,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
+              'ngrok-skip-browser-warning': 'true',
+            },
+            timeout: 10000,
+          }
+        );
+        return directResponse.data;
+      } catch (directError) {
+        throw new Error("Failed to edit proposed HTML. Please try again.");
+      }
+    }
+    
+    if (error instanceof AxiosError) {
+      throw new Error(error.response?.data?.message || 'Failed to edit proposed HTML');
+    }
+    
+    if (error instanceof Error && error.message.includes("session has expired")) {
+      throw error;
+    }
+    throw new Error("Failed to edit proposed HTML. Please try again.");
+  }
+}
+
 // Export axios instances for advanced usage if needed
 export { authApi, projectApi };

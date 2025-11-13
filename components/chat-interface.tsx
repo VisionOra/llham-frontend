@@ -100,7 +100,7 @@ export const ChatInterface = React.memo(function ChatInterface({
   const [selectedDocumentText, setSelectedDocumentText] = useState<string>("")
   const [isUserTyping, setIsUserTyping] = useState(false)
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set())
-  const [randomSuggestedMessages, setRandomSuggestedMessages] = useState<string[]>([])
+  // const [randomSuggestedMessages, setRandomSuggestedMessages] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -177,13 +177,13 @@ export const ChatInterface = React.memo(function ChatInterface({
   }, [isUserTyping, isDocumentMode, currentDocument])
 
   // Randomly shuffle all suggested messages on mount
-  useEffect(() => {
-    const shuffleMessages = () => {
-      const shuffled = [...SUGGESTED_MESSAGES].sort(() => Math.random() - 0.5)
-      return shuffled
-    }
-    setRandomSuggestedMessages(shuffleMessages())
-  }, [])
+  // useEffect(() => {
+  //   const shuffleMessages = () => {
+  //     const shuffled = [...SUGGESTED_MESSAGES].sort(() => Math.random() - 0.5)
+  //     return shuffled
+  //   }
+  //   setRandomSuggestedMessages(shuffleMessages())
+  // }, [])
 
   // Handle document generation callback
   useEffect(() => {
@@ -499,7 +499,7 @@ export const ChatInterface = React.memo(function ChatInterface({
       {/* Messages */}
       <ScrollArea className="flex-1 p-2 sm:p-4 min-h-0 overflow-hidden">
         <div className="space-y-3 sm:space-y-4">
-          {messages.map((message) => (
+          {messages.filter((message) => message.type !== "edit_suggestion").map((message) => (
             <div key={message.id} className="space-y-2">
               <div
                 className={`flex items-start ${
@@ -535,9 +535,7 @@ export const ChatInterface = React.memo(function ChatInterface({
                           ? "bg-[#1a1a1a] text-white border border-[#2a2a2a]"
                           : message.type === "proposal"
                             ? "bg-blue-900/30 text-blue-300 border border-blue-700"
-                            : message.type === "edit_suggestion"
-                              ? "bg-purple-900/30 text-purple-300 border border-purple-700"
-                              : message.type === "error"
+                            : message.type === "error"
                                 ? "bg-red-900/30 text-red-300 border border-red-700"
                                 : "bg-blue-900/30 text-blue-300 border border-blue-700"
                     }`}
@@ -659,148 +657,6 @@ export const ChatInterface = React.memo(function ChatInterface({
                         )}
                       </div>
                     )}
-                    
-                    {/* Edit suggestion/history message rendering for resume (edit_history) and live suggestions */}
-                    {message.type === "edit_suggestion" && (
-                      <div className="mt-4 border border-purple-500/30 rounded-lg overflow-hidden">
-                        {/* Header */}
-                        <div className="bg-purple-900/20 px-4 py-2 border-b border-purple-500/30 flex items-center justify-between">
-                          <span className="text-sm font-medium text-purple-300">📝 Edit Suggestion</span>
-                          {message.status && (
-                            <span className={`text-xs font-semibold px-2 py-1 rounded ${message.status === 'accepted' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>{message.status.toUpperCase()}</span>
-                          )}
-                          {/* Show confidence for live socket edit_suggestion */}
-                          {message.editData?.confidence && (
-                            <span className="text-xs text-purple-200 ml-2">Confidence: {Math.round(message.editData.confidence * 100)}%</span>
-                          )}
-                        </div>
-                        <div className="p-4 space-y-4">
-                          {/* Section info (live socket) or section_identifier (history) */}
-                          {message.editData?.section_info && (
-                            <div className="text-xs text-purple-200 mb-2">Section: {message.editData.section_info}</div>
-                          )}
-                          {message.section_identifier && !message.editData?.section_info && (
-                            <div className="text-xs text-purple-200 mb-2">Section: {message.section_identifier}</div>
-                          )}
-                          {/* Original content */}
-                          {message.editData?.original && (
-                            <div className="bg-red-900/20 border border-red-500/30 rounded-md p-3 mb-2">
-                              <div className="text-xs font-medium text-red-300 mb-1">ORIGINAL</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
-                                <ReactMarkdown
-                                  components={{
-                                    a: ({ node, ...props }) => (
-                                      <a
-                                        {...props}
-                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
-                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                      />
-                                    ),
-                                    p: ({ node, ...props }) => (
-                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
-                                    ),
-                                  }}
-                                >
-                                  {message.editData.original}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                          )}
-                          {message.original_content && !message.editData?.original && (
-                            <div className="bg-red-900/20 border border-red-500/30 rounded-md p-3 mb-2">
-                              <div className="text-xs font-medium text-red-300 mb-1">ORIGINAL</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
-                                <ReactMarkdown
-                                  components={{
-                                    a: ({ node, ...props }) => (
-                                      <a
-                                        {...props}
-                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
-                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                      />
-                                    ),
-                                    p: ({ node, ...props }) => (
-                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
-                                    ),
-                                  }}
-                                >
-                                  {message.original_content}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                          )}
-                          {/* Proposed content */}
-                          {message.editData?.proposed && (
-                            <div className="bg-green-900/20 border border-green-500/30 rounded-md p-3 mb-2">
-                              <div className="text-xs font-medium text-green-300 mb-1">PROPOSED</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
-                                <ReactMarkdown
-                                  components={{
-                                    a: ({ node, ...props }) => (
-                                      <a
-                                        {...props}
-                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
-                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                      />
-                                    ),
-                                    p: ({ node, ...props }) => (
-                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
-                                    ),
-                                  }}
-                                >
-                                  {message.editData.proposed}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                          )}
-                          {message.proposed_content && !message.editData?.proposed && (
-                            <div className="bg-green-900/20 border border-green-500/30 rounded-md p-3 mb-2">
-                              <div className="text-xs font-medium text-green-300 mb-1">PROPOSED</div>
-                              <div className="text-sm text-gray-300 font-mono whitespace-pre-wrap bg-black/20 p-2 rounded break-words overflow-wrap-anywhere">
-                                <ReactMarkdown
-                                  components={{
-                                    a: ({ node, ...props }) => (
-                                      <a
-                                        {...props}
-                                        className="text-blue-400 hover:text-blue-300 underline break-all overflow-wrap-anywhere"
-                                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                      />
-                                    ),
-                                    p: ({ node, ...props }) => (
-                                      <p {...props} className="break-words overflow-wrap-anywhere" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }} />
-                                    ),
-                                  }}
-                                >
-                                  {message.proposed_content}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                          )}
-                          {/* Reason */}
-                          {message.editData?.reason && (
-                            <div className="bg-blue-900/20 border border-blue-500/30 rounded-md p-3 mb-2">
-                              <div className="text-xs font-medium text-blue-300 mb-1">REASON</div>
-                              <p className="text-sm text-blue-200">{message.editData.reason}</p>
-                            </div>
-                          )}
-                          {message.edit_reason && !message.editData?.reason && (
-                            <div className="bg-blue-900/20 border border-blue-500/30 rounded-md p-3 mb-2">
-                              <div className="text-xs font-medium text-blue-300 mb-1">REASON</div>
-                              <p className="text-sm text-blue-200">{message.edit_reason}</p>
-                            </div>
-                          )}
-                          {/* Revert button intentionally hidden in chat for edit history */}
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <p className="text-xs text-gray-500 mt-1">{formatTime(message.timestamp)}</p>
                 </div>
@@ -912,7 +768,7 @@ export const ChatInterface = React.memo(function ChatInterface({
 
       {/* Input Area */}
       <div className="p-2 sm:p-4 border-t border-[#2a2a2a] flex-shrink-0">
-        {/* Suggested Messages Pills - Only show when not in document mode */}
+        {/* Suggested Messages Pills - Only show when not in document mode
         {!isDocumentMode && randomSuggestedMessages.length > 0 && (
         <div className="mb-2 sm:mb-3 w-full overflow-hidden">
         <div 
@@ -937,7 +793,7 @@ export const ChatInterface = React.memo(function ChatInterface({
         </div>
       </div>
       
-        )}
+        )} */}
 
         {/* Uploaded Files Display */}
         {uploadedFiles.length > 0 && (
