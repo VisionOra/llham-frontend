@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { DollarSign, Clock, FileText, AlertCircle, CheckCircle, Loader2, Users, Shield, Search, Filter, ChevronLeft, ChevronRight, Crown, CreditCard } from "lucide-react"
-import { projectApi, TokenManager, getAvailableAgents, selectSessionAgents, type AvailableAgent, getAdminUsers, updateUserSubscriptionPatch, type AdminUser, type AdminUsersListParams } from "@/lib/api"
+import { projectApi, TokenManager, getAvailableAgents, selectSessionAgents, type AvailableAgent, getAdminUsers, updateUserSubscriptionPatch, type AdminUser, type AdminUsersListParams, resetSettingsToDefault } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
 import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
@@ -106,6 +107,15 @@ const SettingsPage = () => {
 
   const { activeSessionId } = useWebSocket()
   const { user } = useAuth()
+  const searchParams = useSearchParams()
+
+  // Get project_id and session_id from URL params or context
+  const projectIdFromUrl = searchParams.get('project_id') || searchParams.get('project')
+  const sessionIdFromUrl = searchParams.get('session_id') || searchParams.get('session')
+  
+  // Use session_id from URL, or fallback to activeSessionId from WebSocket context
+  const currentSessionId = sessionIdFromUrl || activeSessionId || null
+  const currentProjectId = projectIdFromUrl || null
 
   // Use TokenManager for access token, matching the rest of the app
   const token = TokenManager.getAccessToken();
@@ -399,42 +409,65 @@ const SettingsPage = () => {
     setError("")
     setSuccess("")
     try {
-      const res = await projectApi.post("/api/proposals/settings/", {}, {
-        headers: { Authorization: `Bearer ${token}` },
+      // Build payload based on available context:
+      // Case 1: No IDs - global reset (empty payload)
+      // Case 2: Only project_id - project reset
+      // Case 3: Both session_id and project_id - session reset
+      let resetPayload: { project_id?: string; session_id?: string } = {}
+      
+      if (currentSessionId && currentProjectId) {
+        // Case 3: Reset only specific session
+        resetPayload = {
+          session_id: currentSessionId,
+          project_id: currentProjectId
+        }
+      } else if (currentProjectId) {
+        // Case 2: Reset project + all sessions in project
+        resetPayload = {
+          project_id: currentProjectId
+        }
+      }
+      // Case 1: No IDs - global reset (empty payload, already set)
+      
+      // Call the new reset-to-default endpoint with appropriate payload
+      const response = await resetSettingsToDefault(Object.keys(resetPayload).length > 0 ? resetPayload : undefined)
+      
+      // Map default rates from response to form fields
+      // Default rates from API:
+      // - Senior Software Engineer: $35/hr
+      // - DevOps Engineer: $30/hr
+      // - Mid to Senior AI Engineer: $30/hr
+      // - Project Manager: $25/hr
+      // - Mid Level Engineer: $25/hr
+      // - UI/UX Designer: $25/hr
+      // - Junior Engineer: $18/hr
+      const defaultRates = response.default_rates || {}
+      
+      // Update form with default rates
+      setForm({
+        senior_engineer_rate: String(defaultRates.senior_software_engineer || 35),
+        mid_level_engineer_rate: String(defaultRates.mid_level_engineer || 25),
+        junior_engineer_rate: String(defaultRates.junior_engineer || 18),
+        ui_ux_designer_rate: String(defaultRates.ui_ux_designer || 25),
+        project_manager_rate: String(defaultRates.project_manager || 25),
+        devops_engineer_rate: String(defaultRates.devops_engineer || 30),
+        ai_engineer_rate: String(defaultRates.mid_to_senior_ai_engineer || 30),
+        default_instructions: "",
+        currency: "",
+        max_task_hours: 0,
       })
       
-      // Handle response - might have settings in response
-      const responseData = res.data
-      const resetSettings = responseData.settings || responseData
+      // Reset settings ID since we're using defaults
+      setIsNew(true)
+      setSettingsId(null)
       
-      // If response has settings, use them, otherwise reset to initial state
-      if (resetSettings && Object.keys(resetSettings).length > 0 && resetSettings.id) {
-        setSettingsId(resetSettings.id)
-        setForm({
-          senior_engineer_rate: String(resetSettings.senior_engineer_rate || ""),
-          mid_level_engineer_rate: String(resetSettings.mid_level_engineer_rate || ""),
-          junior_engineer_rate: String(resetSettings.junior_engineer_rate || ""),
-          ui_ux_designer_rate: String(resetSettings.ui_ux_designer_rate || ""),
-          project_manager_rate: String(resetSettings.project_manager_rate || ""),
-          devops_engineer_rate: String(resetSettings.devops_engineer_rate || ""),
-          ai_engineer_rate: String(resetSettings.ai_engineer_rate || ""),
-          default_instructions: String(resetSettings.default_instructions || ""),
-          currency: String(resetSettings.currency || ""),
-          max_task_hours: Number(resetSettings.max_task_hours || 0),
-        })
-        setIsNew(false)
-      } else {
-        setIsNew(true)
-        setSettingsId(null)
-        setForm(initialState)
-      }
-      
-      const successMessage = responseData.message || "Settings reset!"
+      // Show success message with reset count
+      const successMessage = response.message || `Settings reset! ${response.reset_count || 0} setting(s) reset to default.`
       setSuccess(successMessage)
       toast.success(successMessage)
     } catch (e: any) {
       console.error("Error resetting settings:", e)
-      const errorMessage = e?.response?.data?.message || e?.message || "Could not reset settings."
+      const errorMessage = e?.message || "Could not reset settings to default."
       setError(errorMessage)
       toast.error(errorMessage)
     } finally {

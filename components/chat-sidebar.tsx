@@ -304,12 +304,12 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 <button
                   className="p-2 rounded hover:bg-[#232326] transition-colors"
                   onClick={onBackToDashboard}
-                  aria-label="New Chat"
+                  aria-label="New Session"
                 >
-                  <Image src="/new-chat.svg" alt="New Chat" width={24} height={24} className="w-6 h-6" />
+                  <Image src="/new-chat.svg" alt="New Session" width={24} height={24} className="w-6 h-6" />
                 </button>
                 <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
-                  New Chat
+                  New Session
                 </div>
               </div>
               <div className="relative group">
@@ -318,9 +318,9 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                   aria-label="Search"
                   onClick={handleSearchClick}
                 >
-                  <Search className="w-6 h-6 text-gray-300" />
+                  <Search className="w-6 h-6 text-[#BCBCBC]" />
                 </button>
-                <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
+                <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-[#BCBCBC] text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
                   Search
                 </div>
               </div>
@@ -369,8 +369,8 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
                 onClick={onBackToDashboard}
               >
-                <Image src="/new-chat.svg" alt="New Chat" width={16} height={16} className="w-4 h-4" />
-                <span className="text-sm">New Chat</span>
+                <Image src="/new-chat.svg" alt="New Session" width={16} height={16} className="w-4 h-4" />
+                <span className="text-sm">New Session</span>
               </div>
               <div
                 className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
@@ -525,10 +525,10 @@ export const ChatSidebar = React.memo(function ChatSidebar({
         {collapsed ? (
           <>
             <div className="flex flex-col items-center gap-4 w-full">
-              <Button size="icon" variant="ghost" className="button-settings text-gray-400 hover:text-black mx-auto" aria-label="Settings" onClick={() => router.push('/settings')}>
+              <Button size="icon" variant="ghost" className="button-settings text-[#BCBCBC] hover:text-black mx-auto" aria-label="Settings" onClick={() => router.push('/settings')}>
                 <Image src="/settings.svg" alt="Settings" width={20} height={20} className="w-5 h-5 sidebar-settings-icon" />
               </Button>
-              <Button size="icon" variant="ghost" className="text-gray-400 hover:text-black mx-auto" onClick={onLogout} aria-label="Logout">
+              <Button size="icon" variant="ghost" className="text-[#BCBCBC] hover:text-black mx-auto" onClick={onLogout} aria-label="Logout">
                 <LogOut className="w-5 h-5" />
               </Button>
             </div>
@@ -601,7 +601,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 autoFocus
                 value={modalSearchTerm}
                 onChange={e => setModalSearchTerm(e.target.value)}
-                placeholder="Search chats by title or project..."
+                placeholder="Search sessions by title or project..."
                 className="bg-[#0a0a0a] border-[#2a2a2a] text-white focus:border-[#3a3a3a]"
               />
             </div>
@@ -643,7 +643,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               ) : (
                 <div className="flex items-center justify-center py-8">
                   <div className="text-gray-400 text-center">
-                    {modalSearchTerm ? 'No chats found matching your search' : 'No chats available'}
+                    {modalSearchTerm ? 'No sessions found matching your search' : 'No sessions available'}
                   </div>
                 </div>
               )}
