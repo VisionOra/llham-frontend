@@ -14,7 +14,7 @@ import { ProposalPanel } from "@/components/proposal-panel"
 
 function ChatPageContent() {
   // Tab state for md/mobile
-  const [activeTab, setActiveTab] = useState<'document' | 'chat'>('document')
+  const [activeTab, setActiveTab] = useState<'proposal' | 'chat'>('proposal')
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -52,23 +52,12 @@ function ChatPageContent() {
   const [showProposalPanel, setShowProposalPanel] = useState(false)
   const [loadingProposalHtml, setLoadingProposalHtml] = useState(false)
   const [proposalPanelWidth, setProposalPanelWidth] = useState(500)
-  const [isProposalPanelExpanded, setIsProposalPanelExpanded] = useState(false)
-  const savedProposalPanelWidth = useRef(500)
-
-  const proposalPanelWidthCalc = showProposalPanel 
-    ? (isProposalPanelExpanded ? `calc(100vw - ${sidebarWidth}px - ${chatWidth}px - 100px)` : proposalPanelWidth) 
-    : 0
-  const actualProposalWidth = showProposalPanel 
-    ? (isProposalPanelExpanded ? `calc(100vw - ${sidebarWidth}px - ${chatWidth}px - 100px)` : proposalPanelWidth)
-    : 0
-  const documentWidth = showProposalPanel && isProposalPanelExpanded 
-    ? '0px' 
-    : `calc(100vw - ${sidebarWidth}px - ${chatWidth}px - ${typeof actualProposalWidth === 'number' ? actualProposalWidth : 0}px)`
 
   const loadedSessionsRef = useRef<Set<string>>(new Set())
   const startedSessionsRef = useRef<Set<string>>(new Set())
   const pendingMessageProcessedRef = useRef<Set<string>>(new Set())
   const loadedProposedHtmlRef = useRef<Set<string>>(new Set())
+  const loadingProposedHtmlRef = useRef<Set<string>>(new Set()) // Track ongoing loads to prevent duplicates
 
   const sessionIdParam = params.sessionId
   const sessionId = sessionIdParam === 'new' ? null : 
@@ -187,50 +176,83 @@ function ChatPageContent() {
     }
   }, [loadingDocument])
 
+  // Helper function to check if html_content is empty or default "No Proposal Generated Yet" message
+  const isDefaultProposalMessage = (htmlContent: string | null | undefined): boolean => {
+    if (!htmlContent || !htmlContent.trim()) {
+      return true
+    }
+    
+    // Check if it contains the default "No Proposal Generated Yet" message
+    const defaultMessagePatterns = [
+      'No Proposal Generated Yet',
+      'Start a conversation with the master agent',
+      'Say something like:'
+    ]
+    
+    const hasDefaultMessage = defaultMessagePatterns.some(pattern => 
+      htmlContent.includes(pattern)
+    )
+    
+    return hasDefaultMessage
+  }
+
   // Load proposed HTML on page refresh/load
   const loadProposedHtml = useCallback(async (sessionId: string, projectId: string | null, forceReload: boolean = false) => {
     if (!projectId) {
       return
     }
 
+    // Prevent duplicate concurrent calls for the same session
+    const loadKey = `${sessionId}-${projectId}`
+    if (loadingProposedHtmlRef.current.has(loadKey)) {
+      return // Already loading, skip
+    }
+
     // Only skip if already loaded and not forcing reload
-    if (!forceReload && loadedProposedHtmlRef.current.has(sessionId)) {
-      // If we already have proposal HTML, ensure panel is shown
-      if (proposalHtml) {
-        setShowProposalPanel(true)
-      }
+    if (!forceReload && loadedProposedHtmlRef.current.has(loadKey)) {
       return
     }
 
     try {
-      // Panel should already be shown before calling this function
-      // Just ensure loading state is set
+      // Mark as loading to prevent duplicates
+      loadingProposedHtmlRef.current.add(loadKey)
       setLoadingProposalHtml(true)
-      loadedProposedHtmlRef.current.add(sessionId)
+      
       const response = await getProposedHtml(projectId, sessionId)
       
-      if (response.html_content) {
+      // Mark as loaded
+      loadedProposedHtmlRef.current.add(loadKey)
+      
+      if (response.html_content && !isDefaultProposalMessage(response.html_content)) {
+        // Only set proposalHtml if it's actual content (not default message)
         setProposalHtml(response.html_content)
         setProposalTitle(response.proposal_title || 'Proposal Preview')
-        setShowProposalPanel(true) // Ensure panel is shown
-      } else {
-        // If no content, keep panel visible but show empty state
         setShowProposalPanel(true)
+      } else {
+        // If content is empty or default message, don't show proposal panel
+        setProposalHtml(null)
+        setShowProposalPanel(false)
       }
     } catch (error) {
-      // If proposal not generated yet (404), keep panel visible with error state
+      // If proposal not generated yet (404), don't show panel
       if (error instanceof Error && error.message.includes("not generated")) {
-        // Keep panel visible but show that proposal is not generated yet
-        setShowProposalPanel(true)
-        return
+        setProposalHtml(null)
+        setShowProposalPanel(false)
+        // Still mark as loaded to prevent retrying
+        loadedProposedHtmlRef.current.add(loadKey)
+      } else {
+        console.error("Error loading proposed HTML:", error)
+        // Don't show panel on error
+        setProposalHtml(null)
+        setShowProposalPanel(false)
+        // Remove from loaded set on error so it can retry
+        loadedProposedHtmlRef.current.delete(loadKey)
       }
-      console.error("Error loading proposed HTML:", error)
-      // Keep panel visible even on error
-      setShowProposalPanel(true)
     } finally {
+      loadingProposedHtmlRef.current.delete(loadKey)
       setLoadingProposalHtml(false)
     }
-  }, [proposalHtml])
+  }, []) // Removed proposalHtml from dependencies to prevent unnecessary recreations
 
   // Start session when sessionId changes (like in old code)
   useEffect(() => {
@@ -245,45 +267,23 @@ function ChatPageContent() {
           loadSessionDocument(sessionId)
         }
         
-        // Always show panel and load proposed HTML when session changes (force reload when coming back)
+        // Load proposed HTML when session changes (only once)
         if (projectId) {
-          // Show panel immediately with loader
-          setShowProposalPanel(true)
-          setLoadingProposalHtml(true)
-          // Clear the ref for this session to allow reload
-          loadedProposedHtmlRef.current.delete(sessionId)
-          loadProposedHtml(sessionId, projectId, true)
-        }
-      } else {
-        // Session already started, but ensure proposal HTML is loaded if we have projectId
-        if (projectId) {
-          // Show panel immediately
-          setShowProposalPanel(true)
-          // If we already have proposal HTML, show it, otherwise load
-          if (proposalHtml) {
-            setLoadingProposalHtml(false)
-          } else {
-            setLoadingProposalHtml(true)
-            // Try to load it again
-            loadedProposedHtmlRef.current.delete(sessionId)
-            loadProposedHtml(sessionId, projectId, true)
+          const loadKey = `${sessionId}-${projectId}`
+          // Only load if not already loaded or loading
+          if (!loadedProposedHtmlRef.current.has(loadKey) && !loadingProposedHtmlRef.current.has(loadKey)) {
+            loadProposedHtml(sessionId, projectId, false)
           }
         }
       }
     } else if (sessionId && sessionId === activeSessionId) {
       // Session is already active (e.g., coming back from settings)
-      // Ensure proposal panel is shown immediately if we have projectId
-      if (projectId) {
-        // Show panel immediately
-        setShowProposalPanel(true)
-        if (proposalHtml) {
-          // If we have proposal HTML, ensure panel is shown
-          setLoadingProposalHtml(false)
-        } else {
-          // Show loader and try to load proposal HTML again
-          setLoadingProposalHtml(true)
-          loadedProposedHtmlRef.current.delete(sessionId)
-          loadProposedHtml(sessionId, projectId, true)
+      // Only load if we don't have proposal HTML yet and haven't loaded it
+      if (projectId && !proposalHtml) {
+        const loadKey = `${sessionId}-${projectId}`
+        // Only load if not already loaded or loading
+        if (!loadedProposedHtmlRef.current.has(loadKey) && !loadingProposedHtmlRef.current.has(loadKey)) {
+          loadProposedHtml(sessionId, projectId, false)
         }
       }
     } else if (!sessionId && activeSessionId) {
@@ -295,6 +295,7 @@ function ChatPageContent() {
       startedSessionsRef.current.clear()
       pendingMessageProcessedRef.current.clear()
       loadedProposedHtmlRef.current.clear()
+      loadingProposedHtmlRef.current.clear()
     }
   }, [sessionId, projectId, activeSessionId, startSession, endSession, loadSessionDocument, loadProposedHtml, proposalHtml])
 
@@ -375,11 +376,15 @@ function ChatPageContent() {
               }, 100) // Small delay to ensure user message is added first
             }
             
-            // Show proposal panel if proposal_html exists (always show, even if message already exists)
-            if (response.proposal_html) {
+            // Show proposal panel if proposal_html exists and it's actual content (not default message)
+            if (response.proposal_html && !isDefaultProposalMessage(response.proposal_html)) {
               setProposalHtml(response.proposal_html)
               setProposalTitle(response.proposal_title || 'Proposal Preview')
               setShowProposalPanel(true)
+            } else if (response.proposal_html) {
+              // If it's default message, don't show panel
+              setProposalHtml(null)
+              setShowProposalPanel(false)
             }
             
             // Clean up sessionStorage
@@ -482,30 +487,20 @@ function ChatPageContent() {
   }
 
   const handleProposalHtmlReceived = (html: string, title?: string) => {
-    setProposalHtml(html)
-    setProposalTitle(title || null)
-    setShowProposalPanel(true)
+    // Only set proposalHtml if it's actual content (not default message)
+    if (html && !isDefaultProposalMessage(html)) {
+      setProposalHtml(html)
+      setProposalTitle(title || null)
+      setShowProposalPanel(true)
+    } else {
+      // If content is empty or default message, don't show proposal panel
+      setProposalHtml(null)
+      setShowProposalPanel(false)
+    }
   }
 
   const handleCloseProposalPanel = () => {
-    // Don't actually close the panel, just keep it visible
-    // User requested that proposal panel should never be closed
-    // setShowProposalPanel(false)
-    // setProposalHtml(null)
-    // setProposalTitle(null)
-    setIsProposalPanelExpanded(false)
-  }
-
-  const handleToggleProposalPanelExpand = () => {
-    if (isProposalPanelExpanded) {
-      // Collapse: restore saved width
-      setIsProposalPanelExpanded(false)
-      setProposalPanelWidth(savedProposalPanelWidth.current)
-    } else {
-      // Expand: save current width and expand
-      savedProposalPanelWidth.current = proposalPanelWidth
-      setIsProposalPanelExpanded(true)
-    }
+    // Keep panel visible per requirement; no action needed now
   }
 
   return (
@@ -524,80 +519,99 @@ function ChatPageContent() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-full min-h-0 overflow-x-hidden">
-        {hasDocument && currentDocument && (
-          <div className="md:hidden w-full bg-[#18181b] border-b border-[#23232a] flex z-20">
-            <button
-              className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === 'document' ? 'bg-[#23232a] text-blue-400' : 'text-gray-300'}`}
-              onClick={() => setActiveTab('document')}
-            >
-              Document
-            </button>
-            <button
-              className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === 'chat' ? 'bg-[#23232a] text-green-400' : 'text-gray-300'}`}
-              onClick={() => setActiveTab('chat')}
-            >
-              Chat
-            </button>
+        {/* Check if proposalHtml exists and is not default message - if not, show only chat interface full width */}
+        {!proposalHtml || isDefaultProposalMessage(proposalHtml) ? (
+          // Only Chat Interface (Full Width) - when proposal_html is not available or is default message
+          <div className="flex-1 flex h-full min-h-0 overflow-x-hidden">
+            <div className="flex-1 flex flex-col h-full min-h-0 relative overflow-hidden">
+              <ChatInterface
+                sessionId={sessionId}
+                projectId={projectId}
+                onNewChat={handleNewChat}
+                isDocumentMode={Boolean(hasDocument)}
+                isWelcomeMode={false}
+                onDocumentGenerated={handleDocumentGenerated}
+                onTextSelect={handleTextSelect}
+                selectedDocumentText={selectedDocumentText}
+                onClearSelectedText={handleClearSelectedText}
+                onProposalHtmlReceived={handleProposalHtmlReceived}
+              />
+            </div>
           </div>
-        )}
-
-        <div className="flex-1 flex h-full min-h-0 overflow-x-hidden">
-          {hasDocument && currentDocument ? (
-            <>
-              {/* Document Panel */}
-              <div
-                className={
-                  `min-h-0 overflow-x-hidden flex-shrink ` +
-                  (activeTab === 'document' ? 'block' : 'hidden') +
-                  ' md:block md:min-w-[0] md:w-auto md:flex-1'
-                }
-                style={{ 
-                  width: typeof window !== 'undefined' && window.innerWidth < 860 ? `calc(100vw - ${sidebarWidth}px)` : documentWidth,
-                  maxWidth: '100%'
-                }}
-              >
-                <DocumentViewer
-                  document={currentDocument}
-                  onTextSelect={handleTextSelect}
-                  editSuggestion={latestEditSuggestion || undefined}
-                  onAcceptEdit={acceptEdit}
-                  onRejectEdit={rejectEdit}
-                  sessionId={activeSessionId || undefined}
-                  sendMessage={sendRawMessage}
-                />
+        ) : (
+          // Proposal + Chat Layout - when proposal_html is available and is actual content
+          <>
+            {showProposalPanel && (
+              <div className="md:hidden w-full bg-[#18181b] border-b border-[#23232a] flex z-20">
+                <button
+                  className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === 'proposal' ? 'bg-[#23232a] text-green-400' : 'text-gray-300'}`}
+                  onClick={() => setActiveTab('proposal')}
+                >
+                  Proposal
+                </button>
+                <button
+                  className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === 'chat' ? 'bg-[#23232a] text-green-400' : 'text-gray-300'}`}
+                  onClick={() => setActiveTab('chat')}
+                >
+                  Chat
+                </button>
               </div>
+            )}
 
-              {/* Chat Panel */}
+            <div className="flex-1 flex h-full min-h-0 overflow-x-hidden">
+              {showProposalPanel ? (
+                <div
+                  className={`flex-1 min-w-0 ${activeTab === 'proposal' ? 'flex' : 'hidden'} md:flex flex-col`}
+                >
+                  {hasDocument && currentDocument && (
+                    <div className="hidden xl:block border-b border-[#23232a] bg-[#0a0a0a] max-h-[40vh] overflow-y-auto">
+                      <DocumentViewer
+                        document={currentDocument}
+                        onTextSelect={handleTextSelect}
+                        editSuggestion={latestEditSuggestion || undefined}
+                        onAcceptEdit={acceptEdit}
+                        onRejectEdit={rejectEdit}
+                        sessionId={activeSessionId || undefined}
+                        sendMessage={sendRawMessage}
+                      />
+                    </div>
+
+                  )}
+                  <div className="flex-1 min-h-0 flex">
+                    <ProposalPanel
+                      proposalHtml={proposalHtml}
+                      proposalTitle={proposalTitle}
+                      showProposalPanel={showProposalPanel}
+                      onClose={handleCloseProposalPanel}
+                      sessionId={sessionId}
+                      projectId={projectId}
+                      sidebarWidth={sidebarWidth}
+                      chatWidth={chatWidth}
+                      proposalPanelWidth={proposalPanelWidth}
+                      onProposalPanelWidthChange={setProposalPanelWidth}
+                      isResizingProposal={isResizingProposal}
+                      onResizeStart={handleProposalResizeStart}
+                      onProposalHtmlUpdate={setProposalHtml}
+                      isLoading={loadingProposalHtml}
+                      forceFullWidth
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-gray-400">
+                  <p>Proposal is not available yet. Start chatting to generate one.</p>
+                </div>
+              )}
+
               <div
-                className={
-                  `flex flex-col h-full min-h-0 relative overflow-hidden ` +
-                  (activeTab === 'chat' ? 'block' : 'hidden') +
-                  ' md:block md:border-l md:border-[#2a2a2a]'
-                }
+                className={`flex flex-col h-full min-h-0 relative overflow-hidden border-l border-[#2a2a2a] ${activeTab === 'chat' ? 'flex' : 'hidden'} md:flex`}
                 style={{ width: typeof window !== 'undefined' && window.innerWidth < 850 ? `calc(100vw - ${sidebarWidth}px)` : `${chatWidth}px` }}
               >
-                {/* Resize Handle (desktop only) */}
-                <div
-                  className={`absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize z-50 transition-all duration-200 hidden md:block ${
-                    isResizing ? 'bg-blue-500 w-2' : 'hover:bg-blue-500/60 hover:w-2'
-                  }`}
-                  onMouseDown={handleResizeStart}
-                  title="Drag to resize chat panel"
-                />
-
-                {/* Resize Indicator (desktop only) */}
-                {isResizing && (
-                  <div className="absolute top-4 left-4 bg-black/80 text-white text-sm px-3 py-2 rounded z-50 hidden md:block">
-                    <div>Chat: {Math.round(chatWidth)}px</div>
-                    <div>Document: Auto</div>
-                  </div>
-                )}
-
                 <ChatInterface
                   sessionId={sessionId}
                   projectId={projectId}
                   onNewChat={handleNewChat}
-                  isDocumentMode={true}
+                  isDocumentMode={Boolean(hasDocument)}
                   isWelcomeMode={false}
                   onDocumentGenerated={handleDocumentGenerated}
                   onTextSelect={handleTextSelect}
@@ -606,74 +620,9 @@ function ChatPageContent() {
                   onProposalHtmlReceived={handleProposalHtmlReceived}
                 />
               </div>
-
-              {/* Proposal Panel (Right Side) - Desktop */}
-              {showProposalPanel && (
-                <ProposalPanel
-                  proposalHtml={proposalHtml}
-                  proposalTitle={proposalTitle}
-                  showProposalPanel={showProposalPanel}
-                  onClose={handleCloseProposalPanel}
-                  sessionId={sessionId}
-                  projectId={projectId}
-                  sidebarWidth={sidebarWidth}
-                  chatWidth={chatWidth}
-                  proposalPanelWidth={proposalPanelWidth}
-                  onProposalPanelWidthChange={setProposalPanelWidth}
-                  isProposalPanelExpanded={isProposalPanelExpanded}
-                  onToggleExpand={handleToggleProposalPanelExpand}
-                  isResizingProposal={isResizingProposal}
-                  onResizeStart={handleProposalResizeStart}
-                  onProposalHtmlUpdate={setProposalHtml}
-                  isLoading={loadingProposalHtml}
-                />
-              )}
-            </>
-          ) : (
-            // Chat only (no document)
-            <div className="flex-1 min-w-0 overflow-hidden">
-              {loadingDocument ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-gray-400">Loading document...</div>
-                </div>
-              ) : (
-                <ChatInterface
-                  sessionId={sessionId}
-                  projectId={projectId}
-                  onNewChat={handleNewChat}
-                  isDocumentMode={false}
-                  isWelcomeMode={false}
-                  onDocumentGenerated={handleDocumentGenerated}
-                  selectedDocumentText=""
-                  onClearSelectedText={handleClearSelectedText}
-                  onProposalHtmlReceived={handleProposalHtmlReceived}
-                />
-              )}
             </div>
-          )}
-
-          {/* Proposal Panel (Right Side) - For chat only mode */}
-          {!hasDocument && showProposalPanel && (
-            <ProposalPanel
-              proposalHtml={proposalHtml}
-              proposalTitle={proposalTitle}
-              showProposalPanel={showProposalPanel}
-              onClose={handleCloseProposalPanel}
-              sessionId={sessionId}
-              projectId={projectId}
-              sidebarWidth={sidebarWidth}
-              chatWidth={chatWidth}
-              proposalPanelWidth={proposalPanelWidth}
-              onProposalPanelWidthChange={setProposalPanelWidth}
-              isProposalPanelExpanded={isProposalPanelExpanded}
-              onToggleExpand={handleToggleProposalPanelExpand}
-              isResizingProposal={isResizingProposal}
-              onResizeStart={handleProposalResizeStart}
-              onProposalHtmlUpdate={setProposalHtml}
-              isLoading={loadingProposalHtml}
-            />
-          )}
-        </div>
+          </>
+        )}
       </div>
 
     </div>

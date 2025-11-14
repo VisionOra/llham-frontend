@@ -465,7 +465,6 @@ export interface CreateSessionRequest {
 
 export interface CreateProjectWithSessionRequest {
   title?: string;
-  initial_idea: string;
   agent_mode?: string;
 }
 
@@ -568,13 +567,30 @@ export async function getSessionHistory(sessionId: string): Promise<any> {
   }
 }
 
+/**
+ * Request interface for communicating with the Master Agent.
+ * 
+ * The Master Agent will:
+ * - Route your request (conversation, edit, or generate proposal)
+ * - Handle conversation and gather information
+ * - Generate proposals when you say "create proposal" or similar
+ * - Edit existing proposals based on your requests
+ * 
+ * Note: The initial idea is automatically extracted from the conversation history.
+ * You don't need to provide it separately - just describe your project idea in the conversation.
+ */
 export interface CommunicateWithMasterAgentRequest {
   session_id: string;
   project_id?: string;
   message: string;
-  initial_idea?: string;
 }
 
+/**
+ * Response from the Master Agent communication endpoint.
+ * 
+ * When you say "create proposal", the Master Agent will execute the full proposal
+ * generation pipeline and return the complete proposal in `proposal_html`.
+ */
 export interface CommunicateWithMasterAgentResponse {
   action: string;
   message: string;
@@ -589,6 +605,15 @@ export interface CommunicateWithMasterAgentResponse {
   initial_idea_set: boolean;
 }
 
+/**
+ * Send a message to the Master Agent for a specific session.
+ * 
+ * The Master Agent will route your request, handle conversation, gather information,
+ * and generate proposals when you say "create proposal" or similar.
+ * 
+ * @param data - Request data containing session_id, project_id (optional), and message
+ * @returns Promise resolving to the Master Agent's response
+ */
 export async function communicateWithMasterAgent(data: CommunicateWithMasterAgentRequest): Promise<CommunicateWithMasterAgentResponse> {
   try {
     const response = await projectApi.post<CommunicateWithMasterAgentResponse>(`/api/proposals/master-agent/communicate/`, data);
@@ -611,6 +636,20 @@ export async function communicateWithMasterAgent(data: CommunicateWithMasterAgen
       } catch (directError) {
         throw new Error("Failed to communicate with master agent. Please try again.");
       }
+    }
+    
+    if (error instanceof AxiosError) {
+      // Handle specific error status codes
+      if (error.response?.status === 400) {
+        throw new Error(error.response?.data?.message || 'Invalid request. Please check your input.');
+      }
+      if (error.response?.status === 404) {
+        throw new Error(error.response?.data?.message || 'Session or project not found.');
+      }
+      if (error.response?.status === 500) {
+        throw new Error(error.response?.data?.message || 'Server error. Please try again later.');
+      }
+      throw new Error(error.response?.data?.message || 'Failed to communicate with master agent.');
     }
     
     if (error instanceof Error && error.message.includes("session has expired")) {
@@ -756,6 +795,45 @@ export async function getProposedHtml(projectId: string, sessionId: string): Pro
       throw error;
     }
     throw new Error("Failed to load proposed HTML. Please try again.");
+  }
+}
+
+// Reset Settings to Default Interface
+export interface ResetToDefaultRequest {
+  project_id?: string;
+  session_id?: string;
+}
+
+export interface ResetToDefaultResponse {
+  message: string;
+  reset_count: number;
+  details: Record<string, any>;
+  default_rates: {
+    senior_software_engineer?: number;
+    devops_engineer?: number;
+    mid_to_senior_ai_engineer?: number;
+    project_manager?: number;
+    mid_level_engineer?: number;
+    ui_ux_designer?: number;
+    junior_engineer?: number;
+  };
+}
+
+// Reset engineer rates to default values with cascading behavior
+export async function resetSettingsToDefault(
+  request?: ResetToDefaultRequest
+): Promise<ResetToDefaultResponse> {
+  try {
+    const response = await projectApi.post<ResetToDefaultResponse>(
+      '/api/proposals/settings/reset-to-default/',
+      request || {}
+    );
+    return response.data;
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      throw new Error(error.response?.data?.message || 'Failed to reset settings to default');
+    }
+    throw new Error("Failed to reset settings to default. Please try again.");
   }
 }
 

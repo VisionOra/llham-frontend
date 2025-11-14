@@ -314,8 +314,7 @@ export const ChatInterface = React.memo(function ChatInterface({
       const response = await communicateWithMasterAgent({
         session_id: activeSessionId,
         project_id: activeProjectId || undefined,
-        message: messageToSend,
-        initial_idea: initialIdea || undefined
+        message: messageToSend
       });
 
       // Handle message from response - add it to chat messages
@@ -347,7 +346,7 @@ export const ChatInterface = React.memo(function ChatInterface({
       // User message already displayed, so we don't need to send via WebSocket
       // Error handling: message is already shown to user
     }
-  }, [inputValue, isWelcomeMode, onNewChat, formatMessageForDisplay, addMessage, currentSelectedText, clearSelectedText, uploadedFiles, activeSessionId, activeProjectId, initialIdea, onProposalHtmlReceived])
+  }, [inputValue, isWelcomeMode, onNewChat, formatMessageForDisplay, addMessage, currentSelectedText, clearSelectedText, uploadedFiles, activeSessionId, activeProjectId, onProposalHtmlReceived])
 
   const handleFileUploaded = useCallback((file: UploadedFile) => {
     setUploadedFiles(prev => [...prev, file]);
@@ -478,11 +477,11 @@ export const ChatInterface = React.memo(function ChatInterface({
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a] min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 sm:p-4 border-b border-[#2a2a2a] flex-shrink-0">
+      <div className="flex items-center justify-between p-3  sm:p-4 border-b border-[#2a2a2a] flex-shrink-0">
         <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
           <div className="flex items-center space-x-1.5 sm:space-x-2 min-w-0">
             <Bot className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 flex-shrink-0" />
-            <h2 className="text-base sm:text-lg font-semibold text-white truncate">{isDocumentMode ? "Document Assistant" : "Ilham AI"}</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-white truncate">{isDocumentMode ? "Document Assistant" : "LLHAM AI"}</h2>
           </div>
           <div className="flex items-center space-x-1.5 sm:space-x-2 me-2 flex-shrink-0">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${connectionStatus === 'connected' ? "bg-green-400" : "bg-red-400"}`} />
@@ -495,7 +494,7 @@ export const ChatInterface = React.memo(function ChatInterface({
             <Badge variant="outline" className="border-green-700 text-green-300 text-center flex items-center justify-center hidden sm:flex">
               Session Active
             </Badge>
-            <button
+            {/* <button
               onClick={() => setIsChatVisible(!isChatVisible)}
               className="text-gray-400 hover:text-white hover:bg-gray-900 rounded-full p-1.5 transition-colors flex-shrink-0"
               aria-label={isChatVisible ? "Hide chat" : "Show chat"}
@@ -506,7 +505,7 @@ export const ChatInterface = React.memo(function ChatInterface({
               ) : (
                 <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
               )}
-            </button>
+            </button> */}
           </div>
         )}
       </div>
@@ -856,7 +855,9 @@ export const ChatInterface = React.memo(function ChatInterface({
           <div className="flex items-center h-full flex-shrink-0 rounded-md">
             <FileUploadButton onFileUploaded={handleFileUploaded} />
           </div>
-          <div className="flex-1 flex items-center h-full min-w-0">
+          <div
+            className="flex-1 flex items-center h-full min-w-0 border border-[#2a2a2a] rounded-lg p-1 transition-all duration-200 focus-within:border-[#16a34a] focus-within:shadow-[0_0_12px_rgba(22,163,74,0.35)]"
+          >
             <AutoGrowTextarea
               value={inputValue}
               setValue={setInputValue}
@@ -883,10 +884,10 @@ export const ChatInterface = React.memo(function ChatInterface({
         </div>
 
         <div className="flex items-center justify-between text-center mt-1.5 sm:mt-2">
-          <p className="text-[10px] sm:text-xs text-gray-500 text-center mx-auto px-2">
+          <p className="text-[10px] sm:text-xs text-white text-center mx-auto px-2">
             {isDocumentMode
               ? "Select text in document and write your query here"
-              : "Press Enter to send, Shift+Enter for new line"}
+              : "Press Enter to send, Shift + Enter for new line"}
           </p>
         </div>
       </div>

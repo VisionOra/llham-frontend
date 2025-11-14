@@ -142,8 +142,7 @@ function ProjectSessionsContent() {
         const communicateResponse = await communicateWithMasterAgent({
           session_id: newSession.id,
           project_id: projectId,
-          message: popupMessage.trim(),
-          initial_idea: popupInitialIdea.trim()
+          message: popupMessage.trim()
         })
         
         // Store communicate response in sessionStorage to handle it on chat page

@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Download, FileText, FileCode, FileType, Maximize2, Minimize2, Edit, History, X, Save, Loader2, FileEdit } from "lucide-react"
+import { Download, FileText, FileCode, FileType, Edit, History, X, Save, Loader2, FileEdit } from "lucide-react"
 import { getProposalEdits, editProposedHtml, type ProposalEdit, type EditProposedHtmlRequest } from "@/lib/api"
 import { toast } from "sonner"
 
@@ -18,12 +18,11 @@ interface ProposalPanelProps {
   chatWidth: number
   proposalPanelWidth: number
   onProposalPanelWidthChange: (width: number) => void
-  isProposalPanelExpanded: boolean
-  onToggleExpand: () => void
   isResizingProposal: boolean
   onResizeStart: () => void
   onProposalHtmlUpdate?: (html: string) => void
   isLoading?: boolean
+  forceFullWidth?: boolean
 }
 
 export function ProposalPanel({
@@ -37,12 +36,11 @@ export function ProposalPanel({
   chatWidth,
   proposalPanelWidth,
   onProposalPanelWidthChange,
-  isProposalPanelExpanded,
-  onToggleExpand,
   isResizingProposal,
   onResizeStart,
   onProposalHtmlUpdate,
-  isLoading = false
+  isLoading = false,
+  forceFullWidth = false
 }: ProposalPanelProps) {
   const [proposalEdits, setProposalEdits] = useState<ProposalEdit[]>([])
   const [loadingEdits, setLoadingEdits] = useState(false)
@@ -694,8 +692,8 @@ export function ProposalPanel({
   
   // Panel should show even if proposalHtml is null (will show loader)
 
-  const panelWidth = isProposalPanelExpanded 
-    ? `calc(100vw - ${sidebarWidth}px - ${chatWidth}px - 100px)` 
+  const panelWidth = forceFullWidth
+    ? '100%'
     : `${proposalPanelWidth}px`
 
   return (
@@ -1042,13 +1040,13 @@ export function ProposalPanel({
               ) : (
                 <div
                   ref={proposalContentRef}
-                  className="proposal-panel-content"
+                  className="proposal-panel-content w-full"
                   contentEditable={isEditMode}
                   suppressContentEditableWarning={true}
                   style={{ 
                     userSelect: isEditMode ? 'text' : 'text',
                     cursor: isEditMode ? 'text' : 'text',
-                    outline: isEditMode ? '2px solid #3b82f6' : 'none',
+                    outline: isEditMode ? '1px solid #3b82f6' : 'none',
                     outlineOffset: isEditMode ? '4px' : '0',
                     minHeight: isEditMode ? '200px' : 'auto',
                     padding: isEditMode ? '8px' : '0'
@@ -1065,84 +1063,14 @@ export function ProposalPanel({
       <div
         className={`hidden lg:flex flex-col h-full border-l border-gray-800 shadow-xl relative ${!isResizingProposal ? 'transition-all duration-200' : ''} min-w-0`}
         style={{ 
-          backgroundColor: '#0A0A0A',
+          backgroundColor: '#1A1A1A',
           width: panelWidth, 
           maxWidth: '100%',
           minWidth: '300px'
         }}
       >
-        {/* Resize Handle - Left side */}
-        <div
-          className={`absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize z-50 transition-all duration-200 ${
-            isResizingProposal ? 'w-2' : 'hover:w-2'
-          }`}
-          style={{ 
-            backgroundColor: isResizingProposal ? '#008236' : 'transparent',
-          }}
-          onMouseEnter={(e) => {
-            if (!isResizingProposal) {
-              e.currentTarget.style.backgroundColor = '#008236'
-              e.currentTarget.style.opacity = '0.6'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizingProposal) {
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.opacity = '1'
-            }
-          }}
-          onMouseDown={onResizeStart}
-          title="Drag to resize proposal panel"
-        />
-        
-        {/* Resize Handle - Right side */}
-        <div
-          className={`absolute top-0 bottom-0 right-0 w-2 cursor-ew-resize z-50 transition-all duration-200`}
-          style={{ 
-            backgroundColor: isResizingProposal ? '#008236' : 'transparent',
-          }}
-          onMouseEnter={(e) => {
-            if (!isResizingProposal) {
-              e.currentTarget.style.backgroundColor = '#008236'
-              e.currentTarget.style.opacity = '0.6'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizingProposal) {
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.opacity = '1'
-            }
-          }}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            onResizeStart()
-            const startX = e.clientX
-            const startWidth = proposalPanelWidth
-            const viewportWidth = window.innerWidth
-            
-            const handleMove = (moveEvent: MouseEvent) => {
-              const deltaX = startX - moveEvent.clientX
-              const newWidth = Math.min(viewportWidth * 0.6, Math.max(300, startWidth + deltaX))
-              onProposalPanelWidthChange(newWidth)
-            }
-            
-            const handleUp = () => {
-              document.body.style.cursor = 'default'
-              document.body.style.userSelect = 'auto'
-              document.removeEventListener('mousemove', handleMove)
-              document.removeEventListener('mouseup', handleUp)
-            }
-            
-            document.body.style.cursor = 'ew-resize'
-            document.body.style.userSelect = 'none'
-            document.addEventListener('mousemove', handleMove)
-            document.addEventListener('mouseup', handleUp)
-          }}
-          title="Drag to resize proposal panel"
-        />
-
         {/* Panel Header */}
-        <div className="flex items-center justify-between p-3 sm:p-4 lg:p-5 border-b border-gray-800 shadow-sm min-w-0 flex-shrink-0" style={{ backgroundColor: '#0A0A0A' }}>
+        <div className="flex items-center justify-between p-3 sm:p-4 lg:p-5.5 border-b border-gray-800 shadow-sm min-w-0 flex-shrink-0" style={{ backgroundColor: '#0A0A0A' }}>
           <div className="flex-1 min-w-0 mr-2 sm:mr-3"></div>
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {/* Edit Mode Toggle Button */}
@@ -1213,20 +1141,6 @@ export function ProposalPanel({
               title="Show edit history"
             >
               <History className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-            
-            {/* Expand/Collapse Button */}
-            <button
-              onClick={onToggleExpand}
-              className="text-gray-400 hover:text-white hover:bg-gray-900 rounded-full p-1.5 transition-colors flex-shrink-0"
-              aria-label={isProposalPanelExpanded ? "Collapse panel" : "Expand panel"}
-              title={isProposalPanelExpanded ? "Collapse panel" : "Expand panel"}
-            >
-              {isProposalPanelExpanded ? (
-                <Minimize2 className="w-4 h-4 sm:w-5 sm:h-5" />
-              ) : (
-                <Maximize2 className="w-4 h-4 sm:w-5 sm:h-5" />
-              )}
             </button>
             
             {/* Export Button */}
@@ -1461,7 +1375,7 @@ export function ProposalPanel({
             `
           }} />
           {showEditHistory ? (
-            <div className="space-y-4">
+            <div className="spacey-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white">Edit History</h3>
                 <button
@@ -1522,7 +1436,7 @@ export function ProposalPanel({
               ) : (
                 <div
                   ref={proposalContentRef}
-                  className="proposal-panel-content"
+                  className="proposal-panel-content w-full"
                   contentEditable={isEditMode}
                   suppressContentEditableWarning={true}
                   style={{ 
