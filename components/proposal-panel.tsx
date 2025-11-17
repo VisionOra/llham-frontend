@@ -3,7 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Download, FileText, FileCode, FileType, Edit, History, X, Save, Loader2, FileEdit } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Download, FileText, FileCode, FileType, Edit, History, X, Save, Loader2, FileEdit, Check } from "lucide-react"
 import { getProposalEdits, editProposedHtml, type ProposalEdit, type EditProposedHtmlRequest } from "@/lib/api"
 import { toast } from "sonner"
 
@@ -48,11 +49,25 @@ export function ProposalPanel({
   const [isEditMode, setIsEditMode] = useState(false)
   const [originalProposalHtml, setOriginalProposalHtml] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [replaceAll, setReplaceAll] = useState(false) // Default to false (off)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [pendingEditData, setPendingEditData] = useState<EditProposedHtmlRequest | null>(null)
+  const [previewResponse, setPreviewResponse] = useState<any>(null) // Store full preview response for inline controls
   const proposalContentRef = useRef<HTMLDivElement>(null)
 
   // Load proposal edits
+  const loadingEditsRef = useRef(false) // Track if edits are currently loading
+  
   const loadProposalEdits = useCallback(async (sessionId: string) => {
     if (!sessionId) return
+    
+    // Prevent duplicate calls
+    if (loadingEditsRef.current) {
+      return
+    }
+    
+    loadingEditsRef.current = true
     setLoadingEdits(true)
     try {
       const response = await getProposalEdits(sessionId, 1)
@@ -62,6 +77,7 @@ export function ProposalPanel({
       setProposalEdits([])
     } finally {
       setLoadingEdits(false)
+      loadingEditsRef.current = false
     }
   }, [])
 
@@ -166,15 +182,60 @@ export function ProposalPanel({
     }
     
     // Extract the changed portion
-    const originalDiff = originalText.substring(prefixEnd, originalText.length - suffixStart)
-    const newDiff = newText.substring(prefixEnd, newText.length - suffixStart)
+    const originalDiffStart = prefixEnd
+    const originalDiffEnd = originalText.length - suffixStart
+    const newDiffStart = prefixEnd
+    const newDiffEnd = newText.length - suffixStart
     
-    // Only add if there's an actual difference
-    if (originalDiff.trim() || newDiff.trim()) {
+    // Find word boundaries around the changed portion
+    // For original text: find word start before diff and word end after diff
+    let originalWordStart = originalDiffStart
+    let originalWordEnd = originalDiffEnd
+    
+    // Move back to find word start (non-word character or start of string)
+    while (originalWordStart > 0 && /\w/.test(originalText[originalWordStart - 1])) {
+      originalWordStart--
+    }
+    
+    // Move forward to find word end (non-word character or end of string)
+    while (originalWordEnd < originalText.length && /\w/.test(originalText[originalWordEnd])) {
+      originalWordEnd++
+    }
+    
+    // For new text: find word start before diff and word end after diff
+    let newWordStart = newDiffStart
+    let newWordEnd = newDiffEnd
+    
+    // Move back to find word start
+    while (newWordStart > 0 && /\w/.test(newText[newWordStart - 1])) {
+      newWordStart--
+    }
+    
+    // Move forward to find word end
+    while (newWordEnd < newText.length && /\w/.test(newText[newWordEnd])) {
+      newWordEnd++
+    }
+    
+    // Extract full words
+    const originalFullWord = originalText.substring(originalWordStart, originalWordEnd).trim()
+    const newFullWord = newText.substring(newWordStart, newWordEnd).trim()
+    
+    // Only add if there's an actual difference and we have valid words
+    if (originalFullWord && newFullWord && originalFullWord !== newFullWord) {
       differences.push({ 
-        original: originalDiff.trim(), 
-        new: newDiff.trim() 
+        original: originalFullWord, 
+        new: newFullWord 
       })
+    } else if (originalDiffStart < originalDiffEnd || newDiffStart < newDiffEnd) {
+      // Fallback: if word boundary detection didn't work, use the diff portion
+      const originalDiff = originalText.substring(originalDiffStart, originalDiffEnd).trim()
+      const newDiff = newText.substring(newDiffStart, newDiffEnd).trim()
+      if (originalDiff || newDiff) {
+        differences.push({ 
+          original: originalDiff, 
+          new: newDiff 
+        })
+      }
     }
     
     return differences
@@ -252,6 +313,7 @@ export function ProposalPanel({
       // Process each text change
       let totalReplacements = 0
       let lastResponse: any = null
+      let hasSuccessfulSave = false
       
       for (const change of textChanges) {
         if (!change.originalText.trim() && !change.newText.trim()) {
@@ -263,38 +325,107 @@ export function ProposalPanel({
           new_text: change.newText,
           edit_reason: "Manual edit by user",
           section_identifier: change.identifier,
-          replace_all: true
+          replace_all: replaceAll
         }
+        
+        console.log('Calling editProposedHtml from proposal panel:', { projectId, sessionId, editData });
         
         try {
           const response = await editProposedHtml(projectId, sessionId, editData)
+          console.log('editProposedHtml response received:', response);
+          
+          // Check if response is in preview mode
+          if (response.preview_mode && response.preview_html) {
+            // Show preview instead of applying changes
+            setPreviewHtml(response.preview_html)
+            setIsPreviewMode(true)
+            setPendingEditData(editData)
+            setPreviewResponse(response) // Store full response for inline controls
+            toast.info("Preview generated", {
+              description: response.message || "Review the changes and confirm to apply them.",
+              duration: 5000,
+            })
+            return // Don't continue with other changes if preview mode
+          }
+          
+          // If we got html_content, mark as successful and exit edit mode immediately
+          if (response.html_content) {
+            hasSuccessfulSave = true
           totalReplacements += response.replacements_count || 0
           lastResponse = response
+            
+            // Update the proposal HTML immediately
+            if (onProposalHtmlUpdate) {
+              onProposalHtmlUpdate(response.html_content)
+            } else if (proposalContentRef.current) {
+              proposalContentRef.current.innerHTML = response.html_content
+            }
+            
+            // Exit edit mode immediately to hide save button
+            setOriginalProposalHtml(null)
+            setIsEditMode(false)
+          } else {
+            totalReplacements += response.replacements_count || 0
+            lastResponse = response
+          }
         } catch (error) {
           console.error(`Error saving change in section ${change.identifier}:`, error)
+          const errorMessage = error instanceof Error ? error.message : "Failed to save changes. Please try again."
+          toast.error("Failed to save change", {
+            description: errorMessage,
+            duration: 5000,
+          })
           // Continue with other changes even if one fails
         }
       }
       
-      // Update the proposal HTML with the last response from server
-      if (lastResponse?.html_content && onProposalHtmlUpdate) {
+      // If we didn't exit edit mode during the loop, exit it now if we got a successful response
+      // (This is a fallback in case state update didn't work during the loop)
+      if (hasSuccessfulSave) {
+        // Already exited during loop, but ensure it's set
+        setOriginalProposalHtml(null)
+        setIsEditMode(false)
+      } else if (lastResponse?.html_content) {
+        // Fallback: Update HTML and exit edit mode if we have html_content
+        if (onProposalHtmlUpdate) {
         onProposalHtmlUpdate(lastResponse.html_content)
-      } else if (lastResponse?.html_content && proposalContentRef.current) {
+        } else if (proposalContentRef.current) {
         proposalContentRef.current.innerHTML = lastResponse.html_content
       }
-      
       setOriginalProposalHtml(null)
       setIsEditMode(false)
+      }
       
       // Reload edits (reset ref so it can reload)
       editsLoadedRef.current = null
       await loadProposalEdits(sessionId)
       editsLoadedRef.current = sessionId
       
-      // Show success toast
-      const message = totalReplacements > 0
-        ? `${textChanges.length} text change(s) made with ${totalReplacements} total replacement(s)`
-        : `${textChanges.length} text change(s) made`
+      // Show success toast with original and new text
+      const firstChange = textChanges.length > 0 ? textChanges[0] : null
+      let message = ""
+      
+      if (firstChange) {
+        const originalText = firstChange.originalText.length > 50 
+          ? firstChange.originalText.substring(0, 50) + '...' 
+          : firstChange.originalText
+        const newText = firstChange.newText.length > 50 
+          ? firstChange.newText.substring(0, 50) + '...' 
+          : firstChange.newText
+        
+        message = `Successfully changed from '${originalText}' to '${newText}'`
+        if (totalReplacements > 0) {
+          message += ` (${totalReplacements} occurrence(s) replaced)`
+        }
+        if (textChanges.length > 1) {
+          message += ` and ${textChanges.length - 1} more change(s)`
+        }
+      } else {
+        message = totalReplacements > 0
+          ? `${textChanges.length} text change(s) made with ${totalReplacements} total replacement(s)`
+          : `${textChanges.length} text change(s) made`
+      }
+      
       toast.success("Changes saved successfully!", {
         description: message,
         duration: 4000,
@@ -309,7 +440,341 @@ export function ProposalPanel({
     } finally {
       setIsSaving(false)
     }
-  }, [sessionId, projectId, proposalHtml, originalProposalHtml, loadProposalEdits, onProposalHtmlUpdate])
+  }, [sessionId, projectId, proposalHtml, originalProposalHtml, loadProposalEdits, onProposalHtmlUpdate, replaceAll])
+
+  // Confirm preview changes
+  const handleConfirmPreview = useCallback(async () => {
+    if (!sessionId || !projectId || !pendingEditData) {
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      // Call edit endpoint again with confirm: true
+      const confirmData = { ...pendingEditData, confirm: true }
+      const response = await editProposedHtml(projectId, sessionId, confirmData)
+      
+      // Apply the changes
+      if (response.html_content && onProposalHtmlUpdate) {
+        onProposalHtmlUpdate(response.html_content)
+      } else if (response.html_content && proposalContentRef.current) {
+        proposalContentRef.current.innerHTML = response.html_content
+      }
+      
+      // Clear preview mode
+      setPreviewHtml(null)
+      setIsPreviewMode(false)
+      setPendingEditData(null)
+      setOriginalProposalHtml(null)
+      setIsEditMode(false)
+      
+      // Reload edits
+      editsLoadedRef.current = null
+      await loadProposalEdits(sessionId)
+      editsLoadedRef.current = sessionId
+      
+      // Format original and new text for toast message
+      const originalText = pendingEditData.original_text.length > 50 
+        ? pendingEditData.original_text.substring(0, 50) + '...' 
+        : pendingEditData.original_text
+      const newText = pendingEditData.new_text.length > 50 
+        ? pendingEditData.new_text.substring(0, 50) + '...' 
+        : pendingEditData.new_text
+      const replacementsCount = response.replacements_count || 0
+      
+      let description = `Successfully changed from '${originalText}' to '${newText}'`
+      if (replacementsCount > 0) {
+        description += ` (${replacementsCount} occurrence(s) replaced)`
+      }
+      
+      toast.success("Changes applied successfully!", {
+        description: description,
+        duration: 4000,
+      })
+    } catch (error) {
+      console.error("Error confirming preview:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to apply changes. Please try again."
+      toast.error("Failed to apply changes", {
+        description: errorMessage,
+        duration: 5000,
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }, [sessionId, projectId, pendingEditData, onProposalHtmlUpdate, loadProposalEdits])
+
+  // Cancel preview and return to original
+  const handleCancelPreview = useCallback(() => {
+    setPreviewHtml(null)
+    setIsPreviewMode(false)
+    setPendingEditData(null)
+    setPreviewResponse(null)
+    toast.info("Preview cancelled", {
+      description: "Returned to original proposal.",
+      duration: 3000,
+    })
+  }, [])
+
+  // Process preview HTML and add inline controls for changes
+  useEffect(() => {
+    if (!isPreviewMode || !previewHtml || !previewResponse?.diff_preview || !proposalContentRef.current) {
+      return
+    }
+
+    // Wait for DOM to update after HTML is rendered
+    const timeoutId = setTimeout(() => {
+      const container = proposalContentRef.current
+      if (!container) return
+
+      const diffPreview = previewResponse.diff_preview
+    
+    if (!diffPreview || diffPreview.length === 0) {
+      return
+    }
+
+    // Extract original_text and new_text from pendingEditData
+    const originalText = pendingEditData?.original_text || ''
+    const newText = pendingEditData?.new_text || ''
+
+    // Process each diff and add inline controls
+    diffPreview.forEach((diff: {occurrence: number, before: string, after: string}, index: number) => {
+      const { before, after } = diff
+      
+      // Extract the changed text from brackets [text]
+      const extractChangedText = (pattern: string): string => {
+        const match = pattern.match(/\[([^\]]+)\]/)
+        return match ? match[1] : ''
+      }
+      
+      // Get actual text to search for
+      const beforeText = extractChangedText(before) || originalText
+      const afterText = extractChangedText(after) || newText
+      
+      if (!beforeText || !afterText) return
+      
+      // Find all instances of the new text in the container
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        null
+      )
+      
+      const textNodes: Text[] = []
+      let node
+      while (node = walker.nextNode()) {
+        if (node.textContent?.includes(afterText)) {
+          textNodes.push(node as Text)
+        }
+      }
+      
+      // Process only the first text node that contains this change (to avoid highlighting all occurrences)
+      let processed = false
+      textNodes.forEach((textNode) => {
+        if (processed) return // Only process first occurrence
+        
+        const parent = textNode.parentElement
+        if (!parent || parent.classList.contains('diff-container')) return
+        
+        const text = textNode.textContent || ''
+        if (!text.includes(afterText)) return
+        
+        // Find first occurrence only
+        const firstIndex = text.indexOf(afterText)
+        if (firstIndex === -1) return
+        
+        // Create unique ID for this diff
+        const diffId = `diff-${index}-${Date.now()}-${Math.random()}`
+        
+        // Create fragment with only first occurrence highlighted
+        const fragment = document.createDocumentFragment()
+        
+        // Add text before the match
+        if (firstIndex > 0) {
+          fragment.appendChild(document.createTextNode(text.substring(0, firstIndex)))
+        }
+        
+        // Create inline control container for the matched text
+        const diffContainer = document.createElement('span')
+        diffContainer.className = 'diff-container'
+        diffContainer.setAttribute('data-diff-id', diffId)
+        diffContainer.setAttribute('data-before', beforeText)
+        diffContainer.setAttribute('data-after', afterText)
+        diffContainer.style.cssText = 'position: relative; display: inline-block; margin: 0 2px;'
+        
+        // Highlighted new text
+        const newTextSpan = document.createElement('span')
+        newTextSpan.className = 'diff-new'
+        newTextSpan.textContent = afterText
+        newTextSpan.style.cssText = 'background-color: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 500;'
+        
+        // Inline controls
+        const controlsSpan = document.createElement('span')
+        controlsSpan.className = 'diff-actions'
+        controlsSpan.style.cssText = 'position: absolute; top: -28px; right: 0; display: flex; gap: 4px; z-index: 1000; background: rgba(0,0,0,0.9); padding: 4px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);'
+        
+        // Accept button
+        const acceptBtn = document.createElement('button')
+        acceptBtn.className = 'diff-accept'
+        acceptBtn.setAttribute('data-diff-id', diffId)
+        acceptBtn.setAttribute('data-before', beforeText)
+        acceptBtn.setAttribute('data-after', afterText)
+        acceptBtn.innerHTML = '✓'
+        acceptBtn.title = 'Accept change'
+        acceptBtn.style.cssText = 'background-color: #10b981; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: bold; transition: opacity 0.2s; min-width: 28px;'
+        acceptBtn.onmouseenter = () => { acceptBtn.style.opacity = '0.8' }
+        acceptBtn.onmouseleave = () => { acceptBtn.style.opacity = '1' }
+        
+        // Reject button
+        const rejectBtn = document.createElement('button')
+        rejectBtn.className = 'diff-reject'
+        rejectBtn.setAttribute('data-diff-id', diffId)
+        rejectBtn.setAttribute('data-before', beforeText)
+        rejectBtn.setAttribute('data-after', afterText)
+        rejectBtn.innerHTML = '✕'
+        rejectBtn.title = 'Reject change'
+        rejectBtn.style.cssText = 'background-color: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: bold; transition: opacity 0.2s; min-width: 28px;'
+        rejectBtn.onmouseenter = () => { rejectBtn.style.opacity = '0.8' }
+        rejectBtn.onmouseleave = () => { rejectBtn.style.opacity = '1' }
+        
+        controlsSpan.appendChild(acceptBtn)
+        controlsSpan.appendChild(rejectBtn)
+        diffContainer.appendChild(newTextSpan)
+        diffContainer.appendChild(controlsSpan)
+        fragment.appendChild(diffContainer)
+        
+        // Add text after the match
+        const remainingText = text.substring(firstIndex + afterText.length)
+        if (remainingText) {
+          fragment.appendChild(document.createTextNode(remainingText))
+        }
+        
+        // Replace the text node with the fragment
+        if (parent) {
+          parent.replaceChild(fragment, textNode)
+          processed = true // Mark as processed to avoid processing more nodes
+        }
+      })
+    })
+
+    // Add event listeners for accept/reject buttons
+    const handleAccept = async (e: Event) => {
+      const button = e.target as HTMLElement
+      const diffId = button.getAttribute('data-diff-id')
+      const before = button.getAttribute('data-before')
+      const after = button.getAttribute('data-after')
+      
+      if (!diffId || !before || !after || !sessionId || !projectId) return
+
+      e.stopPropagation()
+      e.preventDefault()
+      
+      try {
+        setIsSaving(true)
+        // Call edit endpoint with confirm: true for this specific change
+        const confirmData: EditProposedHtmlRequest = {
+          original_text: before,
+          new_text: after,
+          confirm: true,
+          replace_all: true
+        }
+        
+        const response = await editProposedHtml(projectId, sessionId, confirmData)
+        
+        if (response.html_content && onProposalHtmlUpdate) {
+          onProposalHtmlUpdate(response.html_content)
+        } else if (response.html_content && container) {
+          container.innerHTML = response.html_content
+        }
+        
+        // Clear preview mode
+        setPreviewHtml(null)
+        setIsPreviewMode(false)
+        setPendingEditData(null)
+        setPreviewResponse(null)
+        
+        // Exit edit mode to hide save/cancel buttons
+        setOriginalProposalHtml(null)
+        setIsEditMode(false)
+        
+        // Reload edits to get the latest edit history
+        editsLoadedRef.current = null
+        await loadProposalEdits(sessionId)
+        editsLoadedRef.current = sessionId
+        
+        // Format original and new text for toast message
+        const originalText = before.length > 50 ? before.substring(0, 50) + '...' : before
+        const newText = after.length > 50 ? after.substring(0, 50) + '...' : after
+        const replacementsCount = response.replacements_count || 0
+        
+        let description = `Successfully changed from '${originalText}' to '${newText}'`
+        if (replacementsCount > 0) {
+          description += ` (${replacementsCount} occurrence(s) replaced)`
+        }
+        
+        toast.success("Change applied successfully!", {
+          description: description,
+          duration: 4000,
+        })
+      } catch (error) {
+        console.error("Error accepting change:", error)
+        const errorMessage = error instanceof Error ? error.message : "Failed to apply change. Please try again."
+        toast.error("Failed to apply change", {
+          description: errorMessage,
+          duration: 5000,
+        })
+      } finally {
+        setIsSaving(false)
+      }
+    }
+
+    const handleReject = (e: Event) => {
+      const button = e.target as HTMLElement
+      const diffId = button.getAttribute('data-diff-id')
+      const before = button.getAttribute('data-before')
+      const after = button.getAttribute('data-after')
+      
+      if (!diffId || !before || !after || !container) return
+
+      e.stopPropagation()
+      e.preventDefault()
+      
+      // Find the diff container and replace new text with original
+      const diffContainer = container.querySelector(`[data-diff-id="${diffId}"]`)
+      if (diffContainer && diffContainer.parentElement) {
+        diffContainer.parentElement.replaceChild(document.createTextNode(before), diffContainer)
+      }
+      
+      toast.info("Change rejected", {
+        description: "The change has been reverted to the original text.",
+        duration: 3000,
+      })
+    }
+
+      // Attach event listeners
+      const acceptButtons = container.querySelectorAll('.diff-accept')
+      const rejectButtons = container.querySelectorAll('.diff-reject')
+      
+      acceptButtons.forEach(btn => {
+        btn.addEventListener('click', handleAccept)
+      })
+      
+      rejectButtons.forEach(btn => {
+        btn.addEventListener('click', handleReject)
+      })
+    }, 100) // Small delay to ensure DOM is updated
+
+    // Cleanup
+    return () => {
+      clearTimeout(timeoutId)
+      const container = proposalContentRef.current
+      if (container) {
+        const acceptButtons = container.querySelectorAll('.diff-accept')
+        const rejectButtons = container.querySelectorAll('.diff-reject')
+        // Note: We can't remove listeners here as handleAccept/Reject are scoped inside timeout
+        // But this is okay as the component will unmount or re-render when preview mode changes
+      }
+    }
+  }, [isPreviewMode, previewHtml, previewResponse, pendingEditData, sessionId, projectId, onProposalHtmlUpdate, loadProposalEdits])
 
   // HTML to Markdown converter
   const htmlToMarkdown = (html: string): string => {
@@ -1026,11 +1491,29 @@ export function ProposalPanel({
           ) : (
             <>
               {isEditMode && (
-                <div className="mb-3 text-sm text-blue-400 bg-blue-900/30 border border-blue-700 rounded p-2">
-                  ✏️ Edit mode active - You can now edit the content directly
+                <div className="mb-3 text-sm bg-blue-900/30 border border-blue-700 rounded p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-blue-400">✏️ Edit mode active - You can now edit the content directly</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-2 pt-2 border-t border-blue-800">
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="replace-all-toggle" className="text-blue-300 text-xs cursor-pointer">
+                        Replace All Occurrences
+                      </label>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${replaceAll ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                        {replaceAll ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                    <Switch
+                      id="replace-all-toggle"
+                      checked={replaceAll}
+                      onCheckedChange={setReplaceAll}
+                      className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-500"
+                    />
+                  </div>
                 </div>
               )}
-              {isLoading || !proposalHtml ? (
+              {isLoading || (!proposalHtml && !previewHtml) ? (
                 <div className="flex items-center justify-center h-full min-h-[400px]">
                   <div className="flex flex-col items-center space-y-4">
                     <Loader2 className="w-8 h-8 animate-spin text-green-500" />
@@ -1041,17 +1524,17 @@ export function ProposalPanel({
                 <div
                   ref={proposalContentRef}
                   className="proposal-panel-content w-full"
-                  contentEditable={isEditMode}
+                  contentEditable={isEditMode && !isPreviewMode}
                   suppressContentEditableWarning={true}
                   style={{ 
-                    userSelect: isEditMode ? 'text' : 'text',
-                    cursor: isEditMode ? 'text' : 'text',
-                    outline: isEditMode ? '1px solid #3b82f6' : 'none',
-                    outlineOffset: isEditMode ? '4px' : '0',
-                    minHeight: isEditMode ? '200px' : 'auto',
-                    padding: isEditMode ? '8px' : '0'
+                    userSelect: isEditMode && !isPreviewMode ? 'text' : 'text',
+                    cursor: isEditMode && !isPreviewMode ? 'text' : 'text',
+                    outline: isEditMode && !isPreviewMode ? '1px solid #3b82f6' : 'none',
+                    outlineOffset: isEditMode && !isPreviewMode ? '4px' : '0',
+                    minHeight: isEditMode && !isPreviewMode ? '200px' : 'auto',
+                    padding: isEditMode && !isPreviewMode ? '8px' : '0'
                   }}
-                  dangerouslySetInnerHTML={{ __html: proposalHtml || '' }}
+                  dangerouslySetInnerHTML={{ __html: (isPreviewMode && previewHtml) ? previewHtml : (proposalHtml || '') }}
                 />
               )}
             </>
@@ -1422,11 +1905,29 @@ export function ProposalPanel({
           ) : (
             <>
               {isEditMode && (
-                <div className="mb-3 text-sm text-blue-400 bg-blue-900/30 border border-blue-700 rounded p-2">
-                  ✏️ Edit mode active - You can now edit the content directly
+                <div className="mb-3 text-sm bg-blue-900/30 border border-blue-700 rounded p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-blue-400">✏️ Edit mode active - You can now edit the content directly</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-2 pt-2 border-t border-blue-800">
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="replace-all-toggle" className="text-blue-300 text-xs cursor-pointer">
+                        Replace All Occurrences
+                      </label>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${replaceAll ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                        {replaceAll ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                    <Switch
+                      id="replace-all-toggle"
+                      checked={replaceAll}
+                      onCheckedChange={setReplaceAll}
+                      className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-500"
+                    />
+                  </div>
                 </div>
               )}
-              {isLoading || !proposalHtml ? (
+              {isLoading || (!proposalHtml && !previewHtml) ? (
                 <div className="flex items-center justify-center h-full min-h-[400px]">
                   <div className="flex flex-col items-center space-y-4">
                     <Loader2 className="w-8 h-8 animate-spin text-green-500" />
@@ -1437,17 +1938,17 @@ export function ProposalPanel({
                 <div
                   ref={proposalContentRef}
                   className="proposal-panel-content w-full"
-                  contentEditable={isEditMode}
+                  contentEditable={isEditMode && !isPreviewMode}
                   suppressContentEditableWarning={true}
                   style={{ 
-                    userSelect: isEditMode ? 'text' : 'text',
-                    cursor: isEditMode ? 'text' : 'text',
-                    outline: isEditMode ? '2px solid #3b82f6' : 'none',
-                    outlineOffset: isEditMode ? '4px' : '0',
-                    minHeight: isEditMode ? '200px' : 'auto',
-                    padding: isEditMode ? '8px' : '0'
+                    userSelect: isEditMode && !isPreviewMode ? 'text' : 'text',
+                    cursor: isEditMode && !isPreviewMode ? 'text' : 'text',
+                    outline: isEditMode && !isPreviewMode ? '2px solid #3b82f6' : 'none',
+                    outlineOffset: isEditMode && !isPreviewMode ? '4px' : '0',
+                    minHeight: isEditMode && !isPreviewMode ? '200px' : 'auto',
+                    padding: isEditMode && !isPreviewMode ? '8px' : '0'
                   }}
-                  dangerouslySetInnerHTML={{ __html: proposalHtml || '' }}
+                  dangerouslySetInnerHTML={{ __html: (isPreviewMode && previewHtml) ? previewHtml : (proposalHtml || '') }}
                 />
               )}
             </>
