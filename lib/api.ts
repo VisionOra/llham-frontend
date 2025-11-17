@@ -1222,15 +1222,41 @@ export interface EditProposedHtmlRequest {
   edit_reason?: string
   section_identifier?: string
   replace_all?: boolean
+  confirm?: boolean // Set to true to apply preview changes
 }
 
 export interface EditProposedHtmlResponse {
   session_id: string
   project_id: string
-  html_content: string
-  edit_id: string
-  replacements_count: number
+  html_content?: string // Only present when preview_mode is false
+  preview_html?: string // Present when preview_mode is true
+  preview_mode?: boolean
   message: string
+  edit_id?: string
+  replacements_count?: number
+  summary?: {
+    occurrences_found: number
+    replacements_planned: number
+    sections_affected: number
+    replace_all_mode: boolean
+  }
+  diff_preview?: Array<{
+    occurrence: number
+    before: string
+    after: string
+  }>
+  affected_sections?: Array<{
+    agent_name: string
+    section: string
+  }>
+  instructions?: {
+    next_step: string
+    example?: {
+      original_text: string
+      new_text: string
+      confirm: boolean
+    }
+  }
 }
 
 export async function editProposedHtml(
@@ -1238,18 +1264,30 @@ export async function editProposedHtml(
   sessionId: string,
   editData: EditProposedHtmlRequest
 ): Promise<EditProposedHtmlResponse> {
+  if (!projectId || !sessionId) {
+    throw new Error("Project ID and Session ID are required");
+  }
+
+  const url = `/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/edit/`;
+  console.log('Calling editProposedHtml:', { url, projectId, sessionId, editData });
+
   try {
     const response = await projectApi.post<EditProposedHtmlResponse>(
-      `/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/edit/`,
+      url,
       editData
     );
+    console.log('editProposedHtml response:', response.data);
     return response.data;
   } catch (error) {
+    console.error('editProposedHtml error:', error);
+    
     // If it's a redirect error, try the direct approach
     if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
       try {
+        const directUrl = `${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/edit/`;
+        console.log('Trying direct URL:', directUrl);
         const directResponse = await axios.post<EditProposedHtmlResponse>(
-          `${API_BASE_URL}/api/proposals/projects/${projectId}/sessions/${sessionId}/proposed-html/edit/`,
+          directUrl,
           editData,
           {
             headers: {
@@ -1261,14 +1299,27 @@ export async function editProposedHtml(
             timeout: 10000,
           }
         );
+        console.log('Direct response:', directResponse.data);
         return directResponse.data;
       } catch (directError) {
+        console.error('Direct URL error:', directError);
+        if (directError instanceof AxiosError) {
+          const errorMessage = directError.response?.data?.message || directError.response?.data || directError.message || "Failed to edit proposed HTML. Please try again.";
+          throw new Error(errorMessage);
+        }
         throw new Error("Failed to edit proposed HTML. Please try again.");
       }
     }
     
     if (error instanceof AxiosError) {
-      throw new Error(error.response?.data?.message || 'Failed to edit proposed HTML');
+      const errorMessage = error.response?.data?.message || error.response?.data || error.message || 'Failed to edit proposed HTML';
+      console.error('Axios error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: errorMessage
+      });
+      throw new Error(errorMessage);
     }
     
     if (error instanceof Error && error.message.includes("session has expired")) {
