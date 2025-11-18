@@ -8,7 +8,7 @@ import { ChatSidebar } from "@/components/chat-sidebar"
 import { AuthGuard } from "@/components/auth-guard"
 import { useAuth } from "@/contexts/auth-context"
 import { useWebSocket } from "@/contexts/websocket-context"
-import { getDocumentContent, getProposedHtml } from "@/lib/api"
+import { getDocumentContent, getProposedHtml, getSessionHistory } from "@/lib/api"
 import { ProposalPanel } from "@/components/proposal-panel"
 
 
@@ -26,8 +26,6 @@ function ChatPageContent() {
     setPendingMessage,
     acceptEdit, 
     rejectEdit, 
-    startSession, 
-    endSession,
     activeSessionId,
     messages: wsMessages,
     connectionStatus,
@@ -39,7 +37,7 @@ function ChatPageContent() {
   const [isResizing, setIsResizing] = useState(false)
   const [isResizingProposal, setIsResizingProposal] = useState(false)
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const sidebarWidth = sidebarCollapsed ? 64 : 256
 
   const [hasDocument, setHasDocument] = useState(false)
@@ -54,10 +52,10 @@ function ChatPageContent() {
   const [proposalPanelWidth, setProposalPanelWidth] = useState(500)
 
   const loadedSessionsRef = useRef<Set<string>>(new Set())
-  const startedSessionsRef = useRef<Set<string>>(new Set())
   const pendingMessageProcessedRef = useRef<Set<string>>(new Set())
   const loadedProposedHtmlRef = useRef<Set<string>>(new Set())
   const loadingProposedHtmlRef = useRef<Set<string>>(new Set()) // Track ongoing loads to prevent duplicates
+  const loadedHistoryRef = useRef<Set<string>>(new Set()) // Track loaded conversation history
 
   const sessionIdParam = params.sessionId
   const sessionId = sessionIdParam === 'new' ? null : 
@@ -254,54 +252,96 @@ function ChatPageContent() {
     }
   }, []) // Removed proposalHtml from dependencies to prevent unnecessary recreations
 
-  // Start session when sessionId changes (like in old code)
-  useEffect(() => {
-    if (sessionId && sessionId !== activeSessionId) {
-      // Prevent duplicate startSession calls for the same session
-      if (!startedSessionsRef.current.has(sessionId)) {
-        startedSessionsRef.current.add(sessionId)
-        startSession(sessionId, projectId)
+  // Load conversation history
+  const loadConversationHistory = useCallback(async (sessionId: string) => {
+    if (!sessionId || !addMessage) return
+    
+    // Prevent duplicate loads
+    if (loadedHistoryRef.current.has(sessionId)) {
+      return
+    }
+    
+    try {
+      loadedHistoryRef.current.add(sessionId)
+      const sessionData = await getSessionHistory(sessionId)
+      
+      console.log("Loading conversation history for session:", sessionId, sessionData.conversation_history?.length, "messages")
+      
+      if (sessionData.conversation_history && Array.isArray(sessionData.conversation_history)) {
+        // Get current messages to check for duplicates before adding
+        // We'll pass messages context through addMessage, but for now rely on addMessage's duplicate detection
+        // Add all messages from conversation history
+        sessionData.conversation_history.forEach((msg: any, index: number) => {
+          // Create unique ID using message_hash if available
+          const messageId = msg.message_hash 
+            ? `history-${sessionId}-${index}-${msg.message_hash}`
+            : `history-${sessionId}-${index}-${Date.now()}-${index}`
+          
+          // Add message - addMessage function will handle duplicate checking
+          // For user messages, addMessage will check for exact content matches regardless of timestamp
+          addMessage({
+            id: messageId,
+            type: msg.role === 'user' ? 'user' : 'ai',
+            content: msg.message,
+            timestamp: new Date(msg.timestamp),
+            sessionId: sessionId,
+            projectId: projectId || undefined,
+            isStreaming: false
+          })
+        })
         
-        // Only load document if we haven't loaded it for this session yet
-        if (!loadedSessionsRef.current.has(sessionId)) {
-          loadSessionDocument(sessionId)
-        }
-        
-        // Load proposed HTML when session changes (only once)
-        if (projectId) {
-          const loadKey = `${sessionId}-${projectId}`
-          // Only load if not already loaded or loading
-          if (!loadedProposedHtmlRef.current.has(loadKey) && !loadingProposedHtmlRef.current.has(loadKey)) {
-            loadProposedHtml(sessionId, projectId, false)
-          }
-        }
+        console.log("Conversation history loaded:", sessionData.conversation_history.length, "messages processed")
       }
-    } else if (sessionId && sessionId === activeSessionId) {
-      // Session is already active (e.g., coming back from settings)
-      // Only load if we don't have proposal HTML yet and haven't loaded it
-      if (projectId && !proposalHtml) {
+    } catch (error) {
+      console.error("Error loading conversation history:", error)
+      loadedHistoryRef.current.delete(sessionId) // Remove on error so it can retry
+    }
+  }, [addMessage, projectId, sessionId])
+
+  // Load document and proposal HTML when sessionId changes
+  useEffect(() => {
+    if (sessionId) {
+      // Only load document if we haven't loaded it for this session yet
+      if (!loadedSessionsRef.current.has(sessionId)) {
+        loadedSessionsRef.current.add(sessionId)
+        loadSessionDocument(sessionId)
+      }
+      
+      // Load conversation history when WebSocket is connected
+      if (!loadedHistoryRef.current.has(sessionId) && connectionStatus === 'connected') {
+        loadConversationHistory(sessionId)
+      }
+      
+      // Load proposed HTML when session changes (only once)
+      if (projectId) {
         const loadKey = `${sessionId}-${projectId}`
         // Only load if not already loaded or loading
         if (!loadedProposedHtmlRef.current.has(loadKey) && !loadingProposedHtmlRef.current.has(loadKey)) {
           loadProposedHtml(sessionId, projectId, false)
         }
       }
-    } else if (!sessionId && activeSessionId) {
-      endSession()
+    } else {
+      // Clear the loaded sessions when sessionId is null
       setHasDocument(false)
       setCurrentDocument(null)
-      // Clear the loaded sessions when ending session
       loadedSessionsRef.current.clear()
-      startedSessionsRef.current.clear()
       pendingMessageProcessedRef.current.clear()
       loadedProposedHtmlRef.current.clear()
       loadingProposedHtmlRef.current.clear()
+      loadedHistoryRef.current.clear()
     }
-  }, [sessionId, projectId, activeSessionId, startSession, endSession, loadSessionDocument, loadProposedHtml, proposalHtml])
+  }, [sessionId, projectId, loadSessionDocument, loadProposedHtml])
+
+  // Load conversation history when WebSocket connects
+  useEffect(() => {
+    if (sessionId && connectionStatus === 'connected' && !loadedHistoryRef.current.has(sessionId)) {
+      loadConversationHistory(sessionId)
+    }
+  }, [sessionId, connectionStatus, loadConversationHistory])
 
   // Check sessionStorage for pending message and communicate response when session starts
   useEffect(() => {
-    if (sessionId && activeSessionId === sessionId && connectionStatus === 'connected') {
+    if (sessionId && connectionStatus === 'connected') {
       // Prevent processing the same session's pending messages multiple times
       if (pendingMessageProcessedRef.current.has(sessionId)) {
         return
@@ -323,9 +363,10 @@ function ChatPageContent() {
         // Mark as processed before adding to prevent duplicates
         pendingMessageProcessedRef.current.add(sessionId)
         
-        // Add user message instantly to chat
+        // Add user message instantly to chat with unique ID
+        const storedMessageId = `user-stored-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         addMessage({
-          id: `user-${Date.now()}`,
+          id: storedMessageId,
           type: 'user',
           content: storedMessage,
           timestamp: new Date(),
@@ -443,6 +484,26 @@ function ChatPageContent() {
     }
   }, [wsCurrentDocument, hasDocument])
 
+  // Map WebSocket html_content updates to proposalHtml
+  useEffect(() => {
+    if (wsCurrentDocument?.content && sessionId === activeSessionId) {
+      const htmlContent = wsCurrentDocument.content
+      // Check if this is proposal HTML (contains proposal-like structure)
+      // If it has html_content or looks like proposal HTML, map it to proposalHtml
+      if (htmlContent && typeof htmlContent === 'string' && htmlContent.trim().length > 0) {
+        // Check if it's not a default message and looks like HTML content
+        if (!isDefaultProposalMessage(htmlContent) && 
+            (htmlContent.includes('<h1>') || htmlContent.includes('<h2>') || htmlContent.includes('<section'))) {
+          setProposalHtml(htmlContent)
+          if (wsCurrentDocument.title) {
+            setProposalTitle(wsCurrentDocument.title)
+          }
+          setShowProposalPanel(true)
+        }
+      }
+    }
+  }, [wsCurrentDocument, sessionId, activeSessionId])
+
 
 
 
@@ -453,22 +514,18 @@ function ChatPageContent() {
   }
 
   const handleBackToDashboard = () => {
-    endSession()
     router.push('/dashboard')
   }
 
   const handleProjectSelect = (projectId: string) => {
-    endSession()
     router.push(`/project/${projectId}`)
   }
 
   const handleNewProject = () => {
-    endSession()
     router.push('/dashboard')
   }
 
   const handleLogout = () => {
-    endSession()
     logout()
   }
 
@@ -515,6 +572,8 @@ function ChatPageContent() {
         onNewProject={handleNewProject}
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
+        activeProjectId={projectId}
+        activeSessionId={sessionId}
       />
 
       {/* Main Content Area */}

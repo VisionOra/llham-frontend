@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
 // import settingIcon from "@/public/settings.svg"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, User, LogOut, Search, Clock, Plus, Trash2, Link } from "lucide-react"
+import { ArrowLeft, User, LogOut, Search, Clock, Plus, Trash2, Link, Pencil, MoreVertical, Folder, FolderOpen } from "lucide-react"
 import { SidebarToggleIcon } from "@/components/ui/sidebar-toggle-icon"
 import { useProjects } from "@/contexts/project-context"
-import { getUserProjectsPaginated, deleteProject, getProjectSessions } from "@/lib/api"
+import { getUserProjectsPaginated, deleteProject, getProjectSessions, updateProject } from "@/lib/api"
 
 interface ChatSidebarProps {
   user?: {
@@ -24,6 +24,8 @@ interface ChatSidebarProps {
   showProjects?: boolean
   collapsed?: boolean
   setCollapsed?: (collapsed: boolean) => void
+  activeProjectId?: string | null
+  activeSessionId?: string | null
 }
 
 export const ChatSidebar = React.memo(function ChatSidebar({ 
@@ -33,24 +35,21 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   onProjectSelect,
   showProjects = false,
   collapsed: collapsedProp,
-  setCollapsed: setCollapsedProp
+  setCollapsed: setCollapsedProp,
+  activeProjectId,
+  activeSessionId
 }: ChatSidebarProps) {
   const [selectingProjectId, setSelectingProjectId] = useState<null | string>(null);
   const { projects: contextProjects, pagination: contextPagination, refreshProjects, createProject } = useProjects()
   const [projects, setProjects] = useState(contextProjects)
   const [pagination, setPagination] = useState(contextPagination)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [internalCollapsed, internalSetCollapsed] = useState(true)
+  const [internalCollapsed, internalSetCollapsed] = useState(false)
   const collapsed = collapsedProp !== undefined ? collapsedProp : internalCollapsed
   const setCollapsed = setCollapsedProp !== undefined ? setCollapsedProp : internalSetCollapsed
   const [sidebarHovered, setSidebarHovered] = useState(false)
   const router = useRouter()
 
-  // Sync local state with context when context changes
-  React.useEffect(() => {
-    setProjects(contextProjects)
-    setPagination(contextPagination)
-  }, [contextProjects, contextPagination])
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const [newProjectName, setNewProjectName] = useState("")
   const [isCreatingProject, setIsCreatingProject] = useState(false)
@@ -58,6 +57,10 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
   const [isDeletingProject, setIsDeletingProject] = useState(false)
   const [checkingDeleteProjectId, setCheckingDeleteProjectId] = useState<string | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [projectToEdit, setProjectToEdit] = useState<{ id: string; title: string } | null>(null)
+  const [editProjectName, setEditProjectName] = useState("")
+  const [isUpdatingProject, setIsUpdatingProject] = useState(false)
   const [deleteWarningInfo, setDeleteWarningInfo] = useState<{
     sessionsCount: number
     documentsCount: number
@@ -68,6 +71,101 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const [modalSearchTerm, setModalSearchTerm] = useState("");
   const [allSessions, setAllSessions] = useState<Array<{id: string, projectId: string, projectTitle: string, title: string}>>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [projectSessions, setProjectSessions] = useState<Map<string, Array<{id: string, title: string}>>>(new Map());
+  const [loadingProjectSessions, setLoadingProjectSessions] = useState<Set<string>>(new Set());
+  const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
+
+  // Sync local state with context when context changes
+  React.useEffect(() => {
+    setProjects(contextProjects)
+    setPagination(contextPagination)
+  }, [contextProjects, contextPagination])
+
+  // Auto-expand project when active session is set
+  React.useEffect(() => {
+    if (!activeSessionId) return
+
+    let projectIdToExpand: string | null = null
+
+    // If we have activeProjectId, use it directly
+    if (activeProjectId) {
+      projectIdToExpand = activeProjectId
+    } else {
+      // If we don't have activeProjectId, find it from allSessions
+      const sessionData = allSessions.find(s => s.id === activeSessionId)
+      if (sessionData && sessionData.projectId) {
+        projectIdToExpand = sessionData.projectId
+      }
+    }
+
+    if (!projectIdToExpand) return
+
+    // Check if project is already expanded
+    setExpandedProjects(prev => {
+      if (prev.has(projectIdToExpand!)) {
+        return prev
+      }
+      return new Set(prev).add(projectIdToExpand!)
+    })
+
+    // Load sessions if not already loaded
+    setProjectSessions(prev => {
+      if (prev.has(projectIdToExpand!)) {
+        return prev
+      }
+      
+      // Start loading
+      setLoadingProjectSessions(loading => new Set(loading).add(projectIdToExpand!))
+      
+      getProjectSessions(projectIdToExpand!, 1)
+        .then(response => {
+          const validSessions = response.results.filter(session => 
+            session.conversation_history && session.conversation_history.length > 0
+          )
+          const sessions = validSessions.map(session => ({
+            id: session.id,
+            title: session.proposal_title || session.initial_idea || 'Untitled Session'
+          }))
+          setProjectSessions(prev => new Map(prev).set(projectIdToExpand!, sessions))
+        })
+        .catch(error => {
+          console.error('Error loading project sessions:', error)
+          setProjectSessions(prev => new Map(prev).set(projectIdToExpand!, []))
+        })
+        .finally(() => {
+          setLoadingProjectSessions(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(projectIdToExpand!)
+            return newSet
+          })
+        })
+      
+      return prev
+    })
+  }, [activeSessionId, activeProjectId, allSessions])
+
+  // Close context menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openContextMenu) {
+        // Close menu and unselect project
+        setOpenContextMenu(null)
+      }
+    }
+
+    if (openContextMenu) {
+      // Small delay to prevent immediate closing when opening
+      const timeoutId = setTimeout(() => {
+        document.addEventListener('click', handleClickOutside)
+      }, 100)
+      
+      return () => {
+        clearTimeout(timeoutId)
+        document.removeEventListener('click', handleClickOutside)
+      }
+    }
+  }, [openContextMenu])
 
   const handleNewProjectClick = () => {
     setNewProjectName("")
@@ -139,21 +237,93 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   }
 
   const handleSearchClick = async () => {
-    setShowSearchModal(true)
-    setModalSearchTerm("")
-    await loadAllSessions()
+    if (!showSearchInput) {
+      setShowSearchInput(true)
+      setSearchTerm("")
+      await loadAllSessions()
+    } else {
+      setShowSearchInput(false)
+      setSearchTerm("")
+    }
   }
 
   const handleSessionClick = (sessionId: string, projectId: string) => {
-    setShowSearchModal(false)
-    setModalSearchTerm("")
+    setShowSearchInput(false)
+    setSearchTerm("")
     router.push(`/chat/${sessionId}?project=${projectId}`)
   }
 
   const filteredSessions = allSessions.filter(session => 
-    session.title.toLowerCase().includes(modalSearchTerm.toLowerCase()) ||
-    session.projectTitle.toLowerCase().includes(modalSearchTerm.toLowerCase())
+    session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    session.projectTitle.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  const filteredProjects = projects.filter(project => 
+    project.title.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const toggleProjectExpansion = async (projectId: string) => {
+    const isExpanded = expandedProjects.has(projectId)
+    
+    if (isExpanded) {
+      // Collapse
+      setExpandedProjects(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(projectId)
+        return newSet
+      })
+    } else {
+      // Expand - load sessions if not already loaded
+      setExpandedProjects(prev => new Set(prev).add(projectId))
+      
+      if (!projectSessions.has(projectId)) {
+        setLoadingProjectSessions(prev => new Set(prev).add(projectId))
+        try {
+          const response = await getProjectSessions(projectId, 1)
+          const validSessions = response.results.filter(session => 
+            session.conversation_history && session.conversation_history.length > 0
+          )
+          const sessions = validSessions.map(session => ({
+            id: session.id,
+            title: session.proposal_title || session.initial_idea || 'Untitled Session'
+          }))
+          setProjectSessions(prev => new Map(prev).set(projectId, sessions))
+        } catch (error) {
+          console.error('Error loading project sessions:', error)
+          setProjectSessions(prev => new Map(prev).set(projectId, []))
+        } finally {
+          setLoadingProjectSessions(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(projectId)
+            return newSet
+          })
+        }
+      }
+    }
+  }
+
+  const handleEditProject = (projectId: string, projectTitle: string) => {
+    setProjectToEdit({ id: projectId, title: projectTitle })
+    setEditProjectName(projectTitle)
+    setShowEditDialog(true)
+  }
+
+  const confirmEditProject = async () => {
+    if (!projectToEdit || !editProjectName.trim()) return
+
+    setIsUpdatingProject(true)
+    try {
+      await updateProject(projectToEdit.id, { title: editProjectName.trim() })
+      await refreshProjects()
+      setShowEditDialog(false)
+      setProjectToEdit(null)
+      setEditProjectName("")
+    } catch (error: any) {
+      alert(error.message || "Failed to update project. Please try again.")
+    } finally {
+      setIsUpdatingProject(false)
+    }
+  }
 
   const handleDeleteProject = async (projectId: string, projectTitle: string) => {
     setCheckingDeleteProjectId(projectId);
@@ -210,7 +380,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
     >
 
       {/* Header */}
-  <div className={`p-4 border-b border-[#2a2a2a] relative overflow-visible${collapsed ? ' flex flex-col items-center justify-center px-2 py-4' : ' flex flex-col items-start justify-between'}`}
+  <div className={`p-4 relative overflow-visible${collapsed ? ' flex flex-col items-center justify-center px-2 py-4' : ' flex flex-col items-start justify-between'}`}
   >
         <span
           className={`flex items-center${collapsed ? ' justify-center mb-2 relative' : ' space-x-2 mb-4'} hover:cursor-pointer`}
@@ -264,15 +434,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
           )}
         </span>
         {!collapsed && (
-          showProjects ? (
-            <Button
-              onClick={handleNewProjectClick}
-              className="w-full bg-transparent border border-[#2a2a2a] hover:bg-[#1a1a1a] text-white justify-start"
-            >
-              <Image src="/new-project.svg" alt="New Project" width={20} height={20} className="w-5 h-5" />
-              <span className="ml-2">New Project</span>
-            </Button>
-          ) : (
+          !showProjects && (
             <Button
               onClick={onBackToDashboard}
               className="w-full bg-transparent border border-[#2a2a2a] hover:bg-[#1a1a1a] text-white justify-start"
@@ -304,12 +466,12 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 <button
                   className="p-2 rounded hover:bg-[#232326] transition-colors"
                   onClick={onBackToDashboard}
-                  aria-label="New Session"
+                  aria-label="New Document"
                 >
-                  <Image src="/new-chat.svg" alt="New Session" width={24} height={24} className="w-6 h-6" />
+                  <Image src="/new-chat.svg" alt="New Document" width={24} height={24} className="w-6 h-6" />
                 </button>
                 <div className="absolute left-12 top-1/2 -translate-y-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-[#232326]">
-                  New Session
+                  New Document
                 </div>
               </div>
               <div className="relative group">
@@ -364,105 +526,325 @@ export const ChatSidebar = React.memo(function ChatSidebar({
           /* Projects List with additional options */
           <div className="flex-1 overflow-y-auto">
             {/* Navigation Options */}
-            <div className="p-4 space-y-2 border-b border-[#2a2a2a]">
+            <div className="p-4 space-y-2">
               <div 
-                className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
+                className="flex items-center space-x-2 p-2 text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
+                onClick={handleNewProjectClick}
+              >
+                <Image src="/new-project.svg" alt="New Project" width={20} height={20} className="w-5 h-5" />
+                <span className="text-sm text-white">New Project</span>
+              </div>
+              <div 
+                className="flex items-center space-x-2 p-2 text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
                 onClick={onBackToDashboard}
               >
-                <Image src="/new-chat.svg" alt="New Session" width={16} height={16} className="w-4 h-4" />
-                <span className="text-sm">New Session</span>
+                <Image src="/new-chat.svg" alt="New Document" width={20} height={20} className="w-5 h-5" />
+                <span className="text-sm text-white">New Document</span>
               </div>
-              <div
-                className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
-                onClick={handleSearchClick}
-              >
-                <Search className="w-4 h-4" />
-                <span className="text-sm">Search</span>
-              </div>
-              {showSearchInput && (
-                <div className="w-full mt-2 flex items-center gap-2">
-                  <Input
-                    autoFocus
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    placeholder="Search projects..."
-                    className="w-full bg-[#18181b] border-[#2a2a2a] text-white text-xs px-2 py-1 h-8"
-                  />
-                  <button
-                    className="p-1 text-gray-400 hover:text-red-400 rounded transition-colors"
-                    onClick={() => { setShowSearchInput(false); setSearchTerm(""); }}
-                    title="Close search"
-                    tabIndex={-1}
+              <div>
+                {showSearchInput ? (
+                  <div className="w-full space-y-2">
+                    <div className="relative flex items-center">
+                      <Search className="absolute left-3 w-4 h-4 text-gray-400 pointer-events-none" />
+                      <Input
+                        autoFocus
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        placeholder="Search..."
+                        className="w-full bg-[#18181b] border-[#2a2a2a] text-white text-xs pl-9 pr-8 py-2 h-9 rounded"
+                        onBlur={(e) => {
+                          // Keep search open if there's text or if clicking on results
+                          if (!searchTerm && !e.relatedTarget) {
+                            // Only close if clicking outside and no text
+                          }
+                        }}
+                      />
+                      <button
+                        className="absolute right-2 p-1 text-gray-400 hover:text-white rounded transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setShowSearchInput(false)
+                          setSearchTerm("")
+                        }}
+                        title="Close search"
+                        tabIndex={-1}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    {/* Search Results - Documents */}
+                    {searchTerm && (
+                      <div className="max-h-[200px] overflow-y-auto space-y-1 mb-2">
+                        {loadingSessions && allSessions.length === 0 ? (
+                          <div className="flex items-center justify-center py-4">
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                              <div className="text-gray-400 text-xs">Loading documents...</div>
+                            </div>
+                          </div>
+                        ) : filteredSessions.length > 0 ? (
+                          <>
+                            <div className="px-2 py-1">
+                              <span className="text-xs text-gray-500 uppercase tracking-wider">Documents</span>
+                            </div>
+                            {filteredSessions.map((session) => {
+                              const isActiveSession = activeSessionId === session.id;
+                              return (
+                                <div
+                                  key={session.id}
+                                  onClick={() => handleSessionClick(session.id, session.projectId)}
+                                  className={`flex items-center space-x-3 p-2 cursor-pointer rounded-lg transition-colors group ${
+                                    isActiveSession ? 'bg-[#232326]' : 'hover:bg-[#232326]'
+                                  }`}
+                                >
+                                  <Folder className={`w-4 h-4 flex-shrink-0 ${
+                                    isActiveSession ? 'text-green-400' : 'text-gray-400'
+                                  }`} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm truncate transition-colors ${
+                                      isActiveSession 
+                                        ? 'text-green-400' 
+                                        : 'text-white group-hover:text-blue-400'
+                                    }`}>
+                                      {session.title}
+                                    </p>
+                                    <p className="text-xs text-gray-400 truncate">
+                                      {session.projectTitle}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </>
+                        ) : (
+                          <div className="flex items-center justify-center py-4">
+                            <div className="text-gray-400 text-xs text-center">
+                              No documents found matching your search
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center space-x-2 p-2 text-white cursor-pointer hover:bg-[#1a1a1a] rounded"
+                    onClick={handleSearchClick}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+                    <Search className="w-5 h-5 text-white" />
+                    <span className="text-sm text-white">Search</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Projects Label */}
+            <div className="px-4 py-2">
+              <span className="text-xs text-gray-400 uppercase tracking-wider">Projects</span>
             </div>
             {/* Projects List */}
             {projects && projects.length > 0 ? (
               <div className="p-2">
-                {(searchTerm.trim() ? projects.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase())) : projects).map((project) => {
+                {(showSearchInput && searchTerm ? filteredProjects : projects).map((project) => {
                   const isChecking = checkingDeleteProjectId === project.id;
-                  const isSelecting = selectingProjectId === project.id;
+                  const isExpanded = expandedProjects.has(project.id);
+                  const isLoadingSessions = loadingProjectSessions.has(project.id);
+                  const sessions = projectSessions.get(project.id) || [];
+                  
+                  const isContextMenuOpen = openContextMenu === project.id;
+                  const isActiveProject = activeProjectId === project.id;
+                  
                   return (
-                    <div
-                      key={project.id + (isChecking ? '-checking' : '')}
-                      className={`flex items-center space-x-3 p-3 hover:bg-[#1a1a1a] cursor-pointer rounded-lg mb-1 group relative ${selectingProjectId && selectingProjectId !== project.id ? 'pointer-events-none opacity-50' : ''}`}
-                    >
-                      <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                      <div 
-                        className="flex-1 min-w-0"
-                        onClick={async () => {
-                          if (!selectingProjectId) {
-                            setSelectingProjectId(project.id);
-                            try {
-                              await onProjectSelect?.(project.id);
-                            } finally {
-                              setSelectingProjectId(null);
-                            }
-                          }
-                        }}
-                        style={{ cursor: selectingProjectId ? 'not-allowed' : 'pointer' }}
+                    <div key={project.id + (isChecking ? '-checking' : '')} className="mb-1">
+                      <div
+                        className={`flex items-center space-x-3 p-3 rounded-lg group relative ${isChecking ? 'opacity-50' : ''} ${
+                          isContextMenuOpen || isActiveProject ? 'bg-[#232326]' : 'hover:bg-[#1a1a1a]'
+                        }`}
                       >
-                        <p className="text-sm text-white truncate group-hover:text-blue-400 transition-colors">
-                          {project.title}
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Folder icon - click to toggle dropdown */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleDeleteProject(project.id, project.title)
+                            toggleProjectExpansion(project.id)
                           }}
-                          className="p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-colors"
-                          title="Delete project"
-                          disabled={isChecking || !!selectingProjectId}
+                          className="p-1 hover:bg-[#232326] rounded transition-colors flex-shrink-0"
+                          title={isExpanded ? "Collapse documents" : "Expand documents"}
                         >
-                          {isChecking ? (
-                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          {isExpanded ? (
+                            <FolderOpen className={`w-4 h-4 flex-shrink-0 ${
+                              isContextMenuOpen || isActiveProject ? 'text-green-400' : 'text-gray-400'
+                            }`} />
+                          ) : (
+                            <Folder className={`w-4 h-4 flex-shrink-0 ${
+                              isContextMenuOpen || isActiveProject ? 'text-green-400' : 'text-gray-400'
+                            }`} />
+                          )}
+                        </button>
+                        
+                        {/* Project title - click for navigation */}
+                        <div 
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={async () => {
+                            if (!selectingProjectId) {
+                              setSelectingProjectId(project.id);
+                              try {
+                                // Load sessions for the selected project
+                                setLoadingProjectSessions(prev => new Set(prev).add(project.id));
+                                try {
+                                  const response = await getProjectSessions(project.id, 1);
+                                  const validSessions = response.results.filter(session => 
+                                    session.conversation_history && session.conversation_history.length > 0
+                                  );
+                                  const sessions = validSessions.map(session => ({
+                                    id: session.id,
+                                    title: session.proposal_title || session.initial_idea || 'Untitled Session'
+                                  }));
+                                  setProjectSessions(prev => new Map(prev).set(project.id, sessions));
+                                } catch (error) {
+                                  console.error('Error loading project sessions:', error);
+                                } finally {
+                                  setLoadingProjectSessions(prev => {
+                                    const newSet = new Set(prev);
+                                    newSet.delete(project.id);
+                                    return newSet;
+                                  });
+                                }
+                                await onProjectSelect?.(project.id);
+                              } finally {
+                                setSelectingProjectId(null);
+                              }
+                            }
+                          }}
+                          style={{ cursor: selectingProjectId ? 'not-allowed' : 'pointer' }}
+                        >
+                          <p className={`text-sm truncate transition-colors ${
+                            isContextMenuOpen || isActiveProject
+                              ? 'text-green-400' 
+                              : 'text-white group-hover:text-green-400'
+                          }`}>
+                            {project.title}
+                          </p>
+                        </div>
+                        
+                        {/* Three dots menu button */}
+                        <div className="relative">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (openContextMenu === project.id) {
+                                // Close menu and unselect
+                                setOpenContextMenu(null)
+                              } else {
+                                // Open menu and select project
+                                setOpenContextMenu(project.id)
+                              }
+                            }}
+                            className={`p-1 rounded transition-colors ${
+                              isContextMenuOpen 
+                                ? 'bg-[#2a2a2a] opacity-100' 
+                                : isActiveProject
+                                ? 'hover:bg-[#232326] opacity-100'
+                                : 'hover:bg-[#232326] opacity-0 group-hover:opacity-100'
+                            }`}
+                            title="More options"
+                            disabled={isChecking || !!selectingProjectId}
+                          >
+                            <MoreVertical className={`w-4 h-4 ${isContextMenuOpen ? 'text-white' : 'text-gray-400'}`} />
+                          </button>
+                          
+                          {/* Context Menu */}
+                          {openContextMenu === project.id && (
+                            <div 
+                              className="absolute -right-2 top-8 z-50 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl min-w-[180px] overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setOpenContextMenu(null)
+                                  handleEditProject(project.id, project.title)
+                                }}
+                                className="w-full flex items-center space-x-2 px-4 py-2.5 text-white hover:bg-[#232326] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={isChecking || !!selectingProjectId || isUpdatingProject}
+                              >
+                                <Pencil className="w-4 h-4 text-white" />
+                                <span className="text-sm">Rename project</span>
+                              </button>
+                              <div className="h-px bg-[#2a2a2a]"></div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setOpenContextMenu(null)
+                                  handleDeleteProject(project.id, project.title)
+                                }}
+                                className="w-full flex items-center space-x-2 px-4 py-2.5 text-red-400 hover:bg-[#232326] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={isChecking || !!selectingProjectId}
+                              >
+                                {isChecking ? (
+                                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                                  </svg>
+                                ) : (
+                                  <Trash2 className="w-4 h-4 text-red-400" />
+                                )}
+                                <span className="text-sm">Delete project</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Loader overlay for selecting project */}
+                        {selectingProjectId === project.id && (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10 rounded-lg">
+                            <svg className="w-6 h-6 animate-spin text-white" fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
                             </svg>
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </button>
-                        <div className="text-gray-500">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
+                          </div>
+                        )}
                       </div>
-                      {/* Loader overlay for selecting project */}
-                      {isSelecting && (
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10 rounded-lg">
-                          <svg className="w-6 h-6 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                          </svg>
+                      
+                      {/* Documents Dropdown */}
+                      {isExpanded && (
+                        <div className="ml-6 mt-1 mb-2 space-y-1">
+                          {isLoadingSessions ? (
+                            <div className="flex items-center justify-center py-2">
+                              <svg className="w-4 h-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                              </svg>
+                            </div>
+                          ) : sessions.length > 0 ? (
+                            sessions.map((session) => {
+                              const isActiveSession = activeSessionId === session.id;
+                              return (
+                                <div
+                                  key={session.id}
+                                  onClick={() => handleSessionClick(session.id, project.id)}
+                                  className={`flex items-center space-x-2 p-2 pl-4 cursor-pointer rounded-lg group ${
+                                    isActiveSession ? 'bg-[#232326]' : 'hover:bg-[#1a1a1a]'
+                                  }`}
+                                >
+                                  <Folder className={`w-3 h-3 flex-shrink-0 ${
+                                    isActiveSession ? 'text-green-400' : 'text-gray-400'
+                                  }`} />
+                                  <p className={`text-xs truncate transition-colors ${
+                                    isActiveSession 
+                                      ? 'text-green-400' 
+                                      : 'text-gray-400 group-hover:text-blue-400'
+                                  }`}>
+                                    {session.title}
+                                  </p>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="p-2 pl-4 text-xs text-gray-500">
+                              No documents found
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -601,12 +983,12 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 autoFocus
                 value={modalSearchTerm}
                 onChange={e => setModalSearchTerm(e.target.value)}
-                placeholder="Search sessions by title or project..."
+                placeholder="Search documents by title or project..."
                 className="bg-[#0a0a0a] border-[#2a2a2a] text-white focus:border-[#3a3a3a]"
               />
             </div>
             
-            {/* Sessions List */}
+            {/* Documents List */}
             <div className="flex-1 overflow-y-auto min-h-0">
               {loadingSessions && allSessions.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
@@ -623,7 +1005,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                       onClick={() => handleSessionClick(session.id, session.projectId)}
                       className="flex items-center space-x-3 p-3 hover:bg-[#232326] cursor-pointer rounded-lg transition-colors group"
                     >
-                      <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                      <Folder className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-white truncate group-hover:text-blue-400 transition-colors">
                           {session.title}
@@ -643,7 +1025,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
               ) : (
                 <div className="flex items-center justify-center py-8">
                   <div className="text-gray-400 text-center">
-                    {modalSearchTerm ? 'No sessions found matching your search' : 'No sessions available'}
+                    {modalSearchTerm ? 'No documents found matching your search' : 'No documents available'}
                   </div>
                 </div>
               )}
@@ -668,7 +1050,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                     <div className="text-sm">
                       <p className="font-medium text-yellow-300 mb-1">Warning: This project contains data</p>
                       <ul className="space-y-1 text-yellow-100">
-                        <li>• <strong>{deleteWarningInfo.sessionsCount}</strong> session{deleteWarningInfo.sessionsCount !== 1 ? 's' : ''} will be deleted</li>
+                        <li>• <strong>{deleteWarningInfo.sessionsCount}</strong> document{deleteWarningInfo.sessionsCount !== 1 ? 's' : ''} will be deleted</li>
                         {deleteWarningInfo.documentsCount > 0 && (
                           <li>• <strong>{deleteWarningInfo.documentsCount}</strong> document{deleteWarningInfo.documentsCount !== 1 ? 's' : ''} will be permanently lost</li>
                         )}
@@ -699,6 +1081,58 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
                 {isDeletingProject ? "Deleting..." : "Yes, Delete Project"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Project Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white">
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-gray-300">
+              <label htmlFor="edit-project-name" className="block text-sm font-medium mb-2">
+                Project Name
+              </label>
+              <Input
+                id="edit-project-name"
+                type="text"
+                value={editProjectName}
+                onChange={(e) => setEditProjectName(e.target.value)}
+                placeholder="Enter project name"
+                className="bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder-gray-500 focus:border-blue-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isUpdatingProject && editProjectName.trim()) {
+                    confirmEditProject()
+                  }
+                }}
+                disabled={isUpdatingProject}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowEditDialog(false)
+                  setProjectToEdit(null)
+                  setEditProjectName("")
+                }}
+                className="border-[#2a2a2a] text-white hover:bg-[#2a2a2a] hover:text-white bg-transparent"
+                disabled={isUpdatingProject}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmEditProject}
+                disabled={isUpdatingProject || !editProjectName.trim()}
+                className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUpdatingProject ? "Updating..." : "Update Project"}
               </Button>
             </div>
           </div>

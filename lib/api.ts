@@ -695,6 +695,31 @@ export async function createSession(sessionData: CreateSessionRequest): Promise<
 }
 
 // Delete Project
+export interface UpdateProjectRequest {
+  title: string;
+}
+
+export async function updateProject(projectId: string, projectData: UpdateProjectRequest): Promise<Project> {
+  try {
+    const token = TokenManager.getAccessToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await projectApi.put<Project>(`/api/proposals/projects/${projectId}/`, projectData, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || 'Failed to update project');
+    }
+    throw error;
+  }
+}
+
 export async function deleteProject(projectId: string): Promise<void> {
   try {
     const token = TokenManager.getAccessToken();
@@ -1219,27 +1244,27 @@ export async function createProposalEdit(sessionId: string, editData: CreateProp
 export interface EditProposedHtmlRequest {
   original_text: string
   new_text: string
-  edit_reason?: string
-  section_identifier?: string
-  replace_all?: boolean
-  confirm?: boolean // Set to true to apply preview changes
+  apply_to_all_sections: boolean // true for all sections, false for specific sections
+  section_ids?: string[] // Array of section IDs (data-section-id attributes) - required when apply_to_all_sections is false
+  confirm?: boolean // Set to true to apply changes, false for preview
+  edit_reason?: string // Optional reason for the edit
 }
 
 export interface EditProposedHtmlResponse {
   session_id: string
   project_id: string
-  html_content?: string // Only present when preview_mode is false
-  preview_html?: string // Present when preview_mode is true
+  html_content?: string // Only present when confirm is true and changes are applied
+  preview_html?: string // Present when preview_mode is true or confirm is false
   preview_mode?: boolean
-  message: string
+  summary?: {
+    occurrences_found?: number
+    replacements_planned?: number
+    sections_affected?: number
+    replace_all_mode?: boolean
+  }
   edit_id?: string
   replacements_count?: number
-  summary?: {
-    occurrences_found: number
-    replacements_planned: number
-    sections_affected: number
-    replace_all_mode: boolean
-  }
+  message: string
   diff_preview?: Array<{
     occurrence: number
     before: string

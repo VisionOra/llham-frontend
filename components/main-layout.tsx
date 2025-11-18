@@ -15,7 +15,7 @@ function MainLayoutContent({ children }: MainLayoutProps) {
   const pathname = usePathname()
   const { user, logout } = useAuth()
   const [isTransitioning, setIsTransitioning] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const handleBackToDashboard = () => {
     setIsTransitioning(true)

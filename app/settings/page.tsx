@@ -364,9 +364,7 @@ const SettingsPage = () => {
       
       // Handle response structure - can be nested { settings: {...}, message: "..." } or direct settings object
       const responseData = res.data
-      console.log("Response data:", responseData)
       const savedSettings = responseData.settings || responseData
-      console.log("Saved settings:", savedSettings)
       
       // Store the settings ID (update even if it already exists, in case it changed)
       if (savedSettings.id) {
