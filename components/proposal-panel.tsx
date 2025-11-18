@@ -123,18 +123,21 @@ export function ProposalPanel({
     return tempDiv.textContent || tempDiv.innerText || ''
   }
 
-  // Extract sections from HTML
-  const extractSections = (html: string): Map<string, { html: string; text: string; identifier: string }> => {
-    const sections = new Map<string, { html: string; text: string; identifier: string }>()
+  // Extract sections from HTML with section IDs
+  const extractSections = (html: string): Map<string, { html: string; text: string; identifier: string; sectionId?: string }> => {
+    const sections = new Map<string, { html: string; text: string; identifier: string; sectionId?: string }>()
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = html
     
     // Find all sections with agent-section class or data-section attribute
-    const sectionElements = tempDiv.querySelectorAll('.agent-section, [data-section], section')
+    const sectionElements = tempDiv.querySelectorAll('.agent-section, [data-section], section, [data-section-id]')
     
     sectionElements.forEach((element, index) => {
       const sectionHtml = element.outerHTML
       const sectionText = extractText(sectionHtml)
+      
+      // Get section ID from data-section-id attribute (for API)
+      const sectionId = (element as HTMLElement).getAttribute('data-section-id')
       
       // Get section identifier from data-section attribute or class or h3/h2 text
       let identifier = (element as HTMLElement).getAttribute('data-section') || 
@@ -146,7 +149,7 @@ export function ProposalPanel({
         identifier = `Section ${index + 1}`
       }
       
-      sections.set(identifier, { html: sectionHtml, text: sectionText, identifier })
+      sections.set(identifier, { html: sectionHtml, text: sectionText, identifier, sectionId: sectionId || undefined })
     })
     
     // If no sections found, treat entire document as one section
@@ -163,6 +166,27 @@ export function ProposalPanel({
     
     // If texts are identical, no differences
     if (originalText === newText) {
+      return differences
+    }
+    
+    // Handle case where newText is empty or whitespace (text deletion)
+    if (!newText.trim()) {
+      // If new text is empty, the entire original text was deleted
+      if (originalText.trim()) {
+        differences.push({
+          original: originalText.trim(),
+          new: ""
+        })
+      }
+      return differences
+    }
+    
+    // Handle case where originalText is empty (text addition)
+    if (!originalText.trim()) {
+      differences.push({
+        original: "",
+        new: newText.trim()
+      })
       return differences
     }
     
@@ -220,22 +244,40 @@ export function ProposalPanel({
     const originalFullWord = originalText.substring(originalWordStart, originalWordEnd).trim()
     const newFullWord = newText.substring(newWordStart, newWordEnd).trim()
     
-    // Only add if there's an actual difference and we have valid words
-    if (originalFullWord && newFullWord && originalFullWord !== newFullWord) {
+    // Calculate what was actually deleted/added
+    // The original diff portion is what was in original but not in new
+    const originalDiff = originalText.substring(originalDiffStart, originalDiffEnd).trim()
+    // The new diff portion is what is in new but not in original
+    const newDiff = newText.substring(newDiffStart, newDiffEnd).trim()
+    
+    // Check if this is a pure deletion (text removed, nothing added)
+    // This happens when originalDiff has content but newDiff is empty
+    if (originalDiff && !newDiff) {
+      // Pure deletion: the text between prefix and suffix was deleted
+      // Use the original diff (the deleted portion) with empty new text
+      differences.push({ 
+        original: originalFullWord || originalDiff,
+        new: ""
+      })
+    } else if (!originalDiff && newDiff) {
+      // Pure addition: new text was added where there was nothing
+      differences.push({
+        original: "",
+        new: newFullWord || newDiff
+      })
+    } else if (originalDiff && newDiff) {
+      // Replacement: text was changed (both original and new have content)
+      // Use the full words to capture the complete change
+      differences.push({ 
+        original: originalFullWord || originalDiff, 
+        new: newFullWord || newDiff
+      })
+    } else if (originalFullWord && originalFullWord !== newFullWord) {
+      // Fallback: use word boundaries if diff calculation didn't work
       differences.push({ 
         original: originalFullWord, 
-        new: newFullWord 
+        new: newFullWord || "" 
       })
-    } else if (originalDiffStart < originalDiffEnd || newDiffStart < newDiffEnd) {
-      // Fallback: if word boundary detection didn't work, use the diff portion
-      const originalDiff = originalText.substring(originalDiffStart, originalDiffEnd).trim()
-      const newDiff = newText.substring(newDiffStart, newDiffEnd).trim()
-      if (originalDiff || newDiff) {
-        differences.push({ 
-          original: originalDiff, 
-          new: newDiff 
-        })
-      }
     }
     
     return differences
@@ -264,7 +306,7 @@ export function ProposalPanel({
       const updatedSections = extractSections(updatedHtml)
       
       // Find changed sections and their specific text differences
-      const textChanges: Array<{ identifier: string; originalText: string; newText: string }> = []
+      const textChanges: Array<{ identifier: string; sectionId?: string; originalText: string; newText: string }> = []
       
       // Check all sections in updated version
       updatedSections.forEach((updatedSection, identifier) => {
@@ -280,11 +322,13 @@ export function ProposalPanel({
           
           // For each difference, create a separate edit request
           differences.forEach(diff => {
-            if (diff.original.trim() || diff.new.trim()) {
+            // Always include the change, even if newText is empty (for deletions)
+            if (diff.original.trim()) {
               textChanges.push({
                 identifier,
+                sectionId: updatedSection.sectionId,
                 originalText: diff.original.trim(),
-                newText: diff.new.trim()
+                newText: diff.new ? diff.new.trim() : "" // Ensure empty string for deletions
               })
             }
           })
@@ -320,23 +364,67 @@ export function ProposalPanel({
           continue // Skip empty changes
         }
         
-        const editData: EditProposedHtmlRequest = {
-          original_text: change.originalText,
-          new_text: change.newText,
-          edit_reason: "Manual edit by user",
-          section_identifier: change.identifier,
-          replace_all: replaceAll
+        // Determine if this is a remove operation (new_text is empty)
+        const isRemove = !change.newText.trim()
+        
+        // Determine which case this is based on replaceAll and isRemove
+        // Case 1: Replace Text - All Sections (Preview)
+        //   - apply_to_all_sections: true, confirm: false, new_text: "..."
+        // Case 2: Remove Text - All Sections
+        //   - apply_to_all_sections: true, confirm: true, new_text: ""
+        // Case 3: Remove Text - Specific Sections
+        //   - apply_to_all_sections: false, confirm: false, new_text: "", section_ids: [...]
+        // Case 4: Replace Text - Specific Sections
+        //   - apply_to_all_sections: false, confirm: true, new_text: "...", section_ids: [...]
+        
+        let editData: EditProposedHtmlRequest
+        
+        if (replaceAll && !isRemove) {
+          // Case 1: Replace Text - All Sections (Preview)
+          editData = {
+            original_text: change.originalText,
+            new_text: change.newText,
+            apply_to_all_sections: true,
+            confirm: false
+          }
+        } else if (replaceAll && isRemove) {
+          // Case 2: Remove Text - All Sections
+          editData = {
+            original_text: change.originalText,
+            new_text: "",
+            apply_to_all_sections: true,
+            confirm: true
+          }
+        } else if (!replaceAll && isRemove) {
+          // Case 3: Remove Text - Specific Sections
+          editData = {
+            original_text: change.originalText,
+            new_text: "",
+            section_ids: change.sectionId ? [change.sectionId] : [],
+            apply_to_all_sections: false,
+            confirm: false
+          }
+        } else {
+          // Case 4: Replace Text - Specific Sections
+          editData = {
+            original_text: change.originalText,
+            new_text: change.newText,
+            section_ids: change.sectionId ? [change.sectionId] : [],
+            apply_to_all_sections: false,
+            confirm: true
+          }
         }
         
-        console.log('Calling editProposedHtml from proposal panel:', { projectId, sessionId, editData });
+
         
         try {
           const response = await editProposedHtml(projectId, sessionId, editData)
-          console.log('editProposedHtml response received:', response);
           
-          // Check if response is in preview mode
-          if (response.preview_mode && response.preview_html) {
-            // Show preview instead of applying changes
+          // Handle response based on confirm flag
+          // Cases 1 & 3: confirm: false -> Show preview
+          // Cases 2 & 4: confirm: true -> Apply changes directly
+          if (editData.confirm === false && response.preview_mode && response.preview_html) {
+            // Case 1 or 3: Show preview instead of applying changes
             setPreviewHtml(response.preview_html)
             setIsPreviewMode(true)
             setPendingEditData(editData)
@@ -348,11 +436,11 @@ export function ProposalPanel({
             return // Don't continue with other changes if preview mode
           }
           
-          // If we got html_content, mark as successful and exit edit mode immediately
-          if (response.html_content) {
+          // Cases 2 & 4: confirm: true -> Apply changes directly
+          if (editData.confirm === true && response.html_content) {
             hasSuccessfulSave = true
-          totalReplacements += response.replacements_count || 0
-          lastResponse = response
+            totalReplacements += response.replacements_count || 0
+            lastResponse = response
             
             // Update the proposal HTML immediately
             if (onProposalHtmlUpdate) {
@@ -364,7 +452,22 @@ export function ProposalPanel({
             // Exit edit mode immediately to hide save button
             setOriginalProposalHtml(null)
             setIsEditMode(false)
+          } else if (response.html_content) {
+            // Fallback: if html_content is present, apply it
+            hasSuccessfulSave = true
+            totalReplacements += response.replacements_count || 0
+            lastResponse = response
+            
+            if (onProposalHtmlUpdate) {
+              onProposalHtmlUpdate(response.html_content)
+            } else if (proposalContentRef.current) {
+              proposalContentRef.current.innerHTML = response.html_content
+            }
+            
+            setOriginalProposalHtml(null)
+            setIsEditMode(false)
           } else {
+            // No html_content, just track the response
             totalReplacements += response.replacements_count || 0
             lastResponse = response
           }
@@ -422,8 +525,8 @@ export function ProposalPanel({
         }
       } else {
         message = totalReplacements > 0
-          ? `${textChanges.length} text change(s) made with ${totalReplacements} total replacement(s)`
-          : `${textChanges.length} text change(s) made`
+        ? `${textChanges.length} text change(s) made with ${totalReplacements} total replacement(s)`
+        : `${textChanges.length} text change(s) made`
       }
       
       toast.success("Changes saved successfully!", {
@@ -671,11 +774,12 @@ export function ProposalPanel({
       try {
         setIsSaving(true)
         // Call edit endpoint with confirm: true for this specific change
+        // Case 2 or 4: Apply changes (confirm: true)
         const confirmData: EditProposedHtmlRequest = {
           original_text: before,
-          new_text: after,
-          confirm: true,
-          replace_all: true
+          new_text: after || "", // Ensure empty string if after is empty
+          apply_to_all_sections: true, // Apply to all sections for inline confirm
+          confirm: true
         }
         
         const response = await editProposedHtml(projectId, sessionId, confirmData)

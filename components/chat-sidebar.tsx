@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
 // import settingIcon from "@/public/settings.svg"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, User, LogOut, Search, Clock, Plus, Trash2, Link } from "lucide-react"
+import { ArrowLeft, User, LogOut, Search, Clock, Plus, Trash2, Link, Pencil } from "lucide-react"
 import { SidebarToggleIcon } from "@/components/ui/sidebar-toggle-icon"
 import { useProjects } from "@/contexts/project-context"
-import { getUserProjectsPaginated, deleteProject, getProjectSessions } from "@/lib/api"
+import { getUserProjectsPaginated, deleteProject, getProjectSessions, updateProject } from "@/lib/api"
 
 interface ChatSidebarProps {
   user?: {
@@ -58,6 +58,10 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
   const [isDeletingProject, setIsDeletingProject] = useState(false)
   const [checkingDeleteProjectId, setCheckingDeleteProjectId] = useState<string | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [projectToEdit, setProjectToEdit] = useState<{ id: string; title: string } | null>(null)
+  const [editProjectName, setEditProjectName] = useState("")
+  const [isUpdatingProject, setIsUpdatingProject] = useState(false)
   const [deleteWarningInfo, setDeleteWarningInfo] = useState<{
     sessionsCount: number
     documentsCount: number
@@ -154,6 +158,29 @@ export const ChatSidebar = React.memo(function ChatSidebar({
     session.title.toLowerCase().includes(modalSearchTerm.toLowerCase()) ||
     session.projectTitle.toLowerCase().includes(modalSearchTerm.toLowerCase())
   )
+
+  const handleEditProject = (projectId: string, projectTitle: string) => {
+    setProjectToEdit({ id: projectId, title: projectTitle })
+    setEditProjectName(projectTitle)
+    setShowEditDialog(true)
+  }
+
+  const confirmEditProject = async () => {
+    if (!projectToEdit || !editProjectName.trim()) return
+
+    setIsUpdatingProject(true)
+    try {
+      await updateProject(projectToEdit.id, { title: editProjectName.trim() })
+      await refreshProjects()
+      setShowEditDialog(false)
+      setProjectToEdit(null)
+      setEditProjectName("")
+    } catch (error: any) {
+      alert(error.message || "Failed to update project. Please try again.")
+    } finally {
+      setIsUpdatingProject(false)
+    }
+  }
 
   const handleDeleteProject = async (projectId: string, projectTitle: string) => {
     setCheckingDeleteProjectId(projectId);
@@ -435,6 +462,17 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
+                            handleEditProject(project.id, project.title)
+                          }}
+                          className="p-1 hover:bg-blue-600/20 rounded text-gray-500 hover:text-blue-400 transition-colors"
+                          title="Edit project"
+                          disabled={isChecking || !!selectingProjectId || isUpdatingProject}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
                             handleDeleteProject(project.id, project.title)
                           }}
                           className="p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-colors"
@@ -699,6 +737,58 @@ export const ChatSidebar = React.memo(function ChatSidebar({
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
                 {isDeletingProject ? "Deleting..." : "Yes, Delete Project"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Project Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white">
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-gray-300">
+              <label htmlFor="edit-project-name" className="block text-sm font-medium mb-2">
+                Project Name
+              </label>
+              <Input
+                id="edit-project-name"
+                type="text"
+                value={editProjectName}
+                onChange={(e) => setEditProjectName(e.target.value)}
+                placeholder="Enter project name"
+                className="bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder-gray-500 focus:border-blue-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isUpdatingProject && editProjectName.trim()) {
+                    confirmEditProject()
+                  }
+                }}
+                disabled={isUpdatingProject}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowEditDialog(false)
+                  setProjectToEdit(null)
+                  setEditProjectName("")
+                }}
+                className="border-[#2a2a2a] text-white hover:bg-[#2a2a2a] hover:text-white bg-transparent"
+                disabled={isUpdatingProject}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmEditProject}
+                disabled={isUpdatingProject || !editProjectName.trim()}
+                className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUpdatingProject ? "Updating..." : "Update Project"}
               </Button>
             </div>
           </div>

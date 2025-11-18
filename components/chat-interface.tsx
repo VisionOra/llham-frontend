@@ -120,15 +120,12 @@ export const ChatInterface = React.memo(function ChatInterface({
 
   // Use centralized WebSocket context
   const {
-    connectionStatus,
     messages,
     currentStage,
     progress,
     isGeneratingProposal,
     currentDocument,
     agentMode,
-    activeSessionId,
-    activeProjectId,
     initialIdea,
     isTyping,
     sendMessage,
@@ -136,22 +133,33 @@ export const ChatInterface = React.memo(function ChatInterface({
     acceptEdit,
     rejectEdit,
     requestEdit,
-    startSession,
-    endSession
   } = useWebSocket()
+
+  // Filter messages by sessionId to show only current session's messages
+  const filteredMessages = useMemo(() => {
+    if (!sessionId) {
+      // If no sessionId, show all messages (for welcome mode)
+      return messages.filter((message) => message.type !== "edit_suggestion")
+    }
+    // Filter messages by sessionId
+    return messages.filter((message) => 
+      message.type !== "edit_suggestion" && 
+      message.sessionId === sessionId
+    )
+  }, [messages, sessionId])
 
   // Memoize expensive computations
   const isStreaming = useMemo(() => 
-    messages.some(msg => 
+    filteredMessages.some(msg => 
       msg.type === 'ai' && 
       msg.id.startsWith('streaming-') && 
       !msg.suggestions // Complete messages have suggestions
-    ), [messages])
+    ), [filteredMessages])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [filteredMessages])
 
   useEffect(() => {
     if (isTyping === false && isUserTyping) {
@@ -259,7 +267,7 @@ export const ChatInterface = React.memo(function ChatInterface({
       return;
     }
 
-    if (!activeSessionId) {
+    if (!sessionId) {
       return;
     }
 
@@ -299,8 +307,8 @@ export const ChatInterface = React.memo(function ChatInterface({
       type: 'user',
       content: displayMessage,
       timestamp: new Date(),
-      sessionId: activeSessionId || undefined,
-      projectId: activeProjectId || undefined,
+      sessionId: sessionId || undefined,
+      projectId: projectId || undefined,
       isStreaming: false
     });
 
@@ -312,8 +320,8 @@ export const ChatInterface = React.memo(function ChatInterface({
     try {
       // Call communicate API first
       const response = await communicateWithMasterAgent({
-        session_id: activeSessionId,
-        project_id: activeProjectId || undefined,
+        session_id: sessionId,
+        project_id: projectId || undefined,
         message: messageToSend
       });
 
@@ -324,8 +332,8 @@ export const ChatInterface = React.memo(function ChatInterface({
           type: 'ai',
           content: response.message,
           timestamp: new Date(),
-          sessionId: activeSessionId || undefined,
-          projectId: activeProjectId || undefined,
+          sessionId: sessionId || undefined,
+          projectId: projectId || undefined,
           isStreaming: false
         });
       }
@@ -346,7 +354,7 @@ export const ChatInterface = React.memo(function ChatInterface({
       // User message already displayed, so we don't need to send via WebSocket
       // Error handling: message is already shown to user
     }
-  }, [inputValue, isWelcomeMode, onNewChat, formatMessageForDisplay, addMessage, currentSelectedText, clearSelectedText, uploadedFiles, activeSessionId, activeProjectId, onProposalHtmlReceived])
+  }, [inputValue, isWelcomeMode, onNewChat, formatMessageForDisplay, addMessage, currentSelectedText, clearSelectedText, uploadedFiles, sessionId, projectId, onProposalHtmlReceived])
 
   const handleFileUploaded = useCallback((file: UploadedFile) => {
     setUploadedFiles(prev => [...prev, file]);
@@ -458,10 +466,10 @@ export const ChatInterface = React.memo(function ChatInterface({
             <div className="flex-shrink-0">
               <Button
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || (!isWelcomeMode && (connectionStatus !== 'connected' || isGeneratingProposal))}
+                disabled={!inputValue.trim() || (!isWelcomeMode && isGeneratingProposal)}
                 className="bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 rounded-full h-8 w-8 p-0 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {!isWelcomeMode && (connectionStatus !== 'connected' || isGeneratingProposal) ? (
+                {!isWelcomeMode && isGeneratingProposal ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
@@ -483,38 +491,14 @@ export const ChatInterface = React.memo(function ChatInterface({
             <Bot className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 flex-shrink-0" />
             <h2 className="text-base sm:text-lg font-semibold text-white truncate">{isDocumentMode ? "Document Assistant" : "LLHAM AI"}</h2>
           </div>
-          <div className="flex items-center space-x-1.5 sm:space-x-2 me-2 flex-shrink-0">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${connectionStatus === 'connected' ? "bg-green-400" : "bg-red-400"}`} />
-                <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">{connectionStatus === 'connected' ? "Connected" : "Connecting..."}</span>
-          </div>
         </div>
-
-        {sessionId && (
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Badge variant="outline" className="border-green-700 text-green-300 text-center flex items-center justify-center hidden sm:flex">
-              Session Active
-            </Badge>
-            {/* <button
-              onClick={() => setIsChatVisible(!isChatVisible)}
-              className="text-gray-400 hover:text-white hover:bg-gray-900 rounded-full p-1.5 transition-colors flex-shrink-0"
-              aria-label={isChatVisible ? "Hide chat" : "Show chat"}
-              title={isChatVisible ? "Hide chat" : "Show chat"}
-            >
-              {isChatVisible ? (
-                <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" />
-              ) : (
-                <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
-              )}
-            </button> */}
-          </div>
-        )}
       </div>
 
       {/* Messages */}
       {isChatVisible && (
       <ScrollArea className="flex-1 p-2 sm:p-4 min-h-0 overflow-hidden">
         <div className="space-y-3 sm:space-y-4">
-          {messages.filter((message) => message.type !== "edit_suggestion").map((message) => (
+          {filteredMessages.map((message) => (
             <div key={message.id} className="space-y-2">
               <div
                 className={`flex items-start ${
@@ -759,23 +743,6 @@ export const ChatInterface = React.memo(function ChatInterface({
 
         
 
-          {/* Connection status indicator */}
-          {connectionStatus !== 'connected' && (
-            <div className="flex items-start space-x-3">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-600 flex items-center justify-center">
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
-              </div>
-              <div className="flex-1">
-                <div className="inline-block p-3 rounded-lg bg-yellow-900/30 border border-yellow-700">
-                  <span className="text-sm text-yellow-300">
-                    {connectionStatus === 'connecting' ? 'Connecting...' : 
-                     connectionStatus === 'error' ? 'Connection error. Retrying...' : 
-                     'Disconnected'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -875,10 +842,10 @@ export const ChatInterface = React.memo(function ChatInterface({
           <div className="flex items-center h-full flex-shrink-0">
             <Button
               onClick={handleSendMessage}
-              disabled={!inputValue.trim() || connectionStatus !== 'connected' || isGeneratingProposal}
+              disabled={!inputValue.trim() || isGeneratingProposal}
               className="bg-green-700 hover:bg-green-600 text-white disabled:opacity-50 flex items-center justify-center h-10 sm:h-[45px] min-w-[38px] sm:min-w-[45px] rounded-md p-2 sm:p-0"
             >
-              {(connectionStatus !== 'connected' || isGeneratingProposal) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {isGeneratingProposal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
         </div>

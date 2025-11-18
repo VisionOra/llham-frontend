@@ -16,8 +16,6 @@ function DashboardContent() {
   const { user, isAuthenticated } = useAuth()
   const { projects, createProject, refreshProjects } = useProjects()
   const { 
-    startSession, 
-    endSession,
     activeSessionId,
     sendMessage,
     setPendingMessage
