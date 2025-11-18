@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react"
-import { TokenManager, getSessionHistory } from "@/lib/api"
+import { TokenManager } from "@/lib/api"
 import type { ChatMessage } from "@/hooks/use-proposal-socket"
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -27,8 +27,6 @@ interface WebSocketContextType {
   acceptEdit: (editId: string) => void
   rejectEdit: (editId: string) => void
   requestEdit: (selectedText: string, documentContext: string) => void
-  startSession: (sessionId: string, projectId?: string | null) => void
-  endSession: () => void
   clearMessages: () => void
 }
 
@@ -138,6 +136,39 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
+          
+          // Handle action-based messages (like "conversation")
+          if (data.action === 'conversation' && data.message) {
+            // console.log("WebSocket: Received conversation action message", data)
+            setMessages(prev => {
+              // Check if this message already exists to prevent duplicates
+              // Remove timestamp check as conversation history may have different timestamps
+              const isDuplicate = prev.some(msg => 
+                msg.type === 'ai' && 
+                msg.content === data.message && 
+                msg.sessionId === data.session_id
+              )
+              
+              if (isDuplicate) {
+                // console.log("WebSocket: Duplicate message detected, skipping")
+                return prev // Don't add duplicate
+              }
+              
+              // console.log("WebSocket: Adding conversation message to chat", data.message)
+              return [...prev, {
+                id: `conversation-${Date.now()}`,
+                type: 'ai',
+                content: data.message,
+                timestamp: new Date(),
+                sessionId: data.session_id,
+                projectId: data.project_id,
+                isStreaming: false
+              }]
+            })
+            setAgentMode(data.agent_mode || 'conversation')
+            setIsTyping(false)
+            return // Exit early after handling action-based message
+          }
           
           switch(data.type) {
             case 'connection_established':
@@ -631,134 +662,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
   }, [socket, sendMessage])
 
-  const startSession = useCallback(async (sessionId: string, projectId: string | null = null) => {
-  
-        if (activeSessionId === sessionId && socket?.readyState === WebSocket.OPEN) {
-      return
-    }
-
-    // Prevent duplicate resume API calls for the same session
-    if (loadingSessionRef.current.has(sessionId)) {
-      return
-    }
-
-    // Mark session as loading immediately to prevent duplicate calls
-    loadingSessionRef.current.add(sessionId)
-
-    // Close existing connection if different session
-    if (socket && activeSessionId !== sessionId) {
-      socket.close(1000)
-      // Wait a bit before creating new connection
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-
-    setActiveSessionId(sessionId)
-    setActiveProjectId(projectId)
-    
-    setMessages([])
-    setCurrentDocument(null)
-    setIsGeneratingProposal(false)
-    setCurrentStage(null)
-    setProgress(0)
-    setAgentMode('conversation')
-    setCurrentStreamingMessage(null)
-    setLatestEditSuggestion(null)
-    
-    if (!sessionId.startsWith('temp-')) {
-      
-      try {
-        const sessionData = await getSessionHistory(sessionId)
-        
-        if (sessionData.conversation_history && Array.isArray(sessionData.conversation_history)) {
-          const previousMessages: ChatMessage[] = sessionData.conversation_history.map((msg: any, index: number) => ({
-            id: `history-${index}`,
-            type: msg.role === 'user' ? 'user' : 'ai',
-            content: msg.message,
-            timestamp: new Date(msg.timestamp),
-            sessionId: sessionId,
-            projectId: projectId
-          }))
-            let editHistoryMessages: ChatMessage[] = [];
-            if (sessionData.edit_history && Array.isArray(sessionData.edit_history)) {
-              editHistoryMessages = sessionData.edit_history.map((edit: any, index: number) => ({
-                id: `edit-history-${index}`,
-                type: 'edit_suggestion',
-                content: edit.suggestion || edit.message || '',
-                timestamp: new Date(edit.updated_at || edit.created_at),
-                sessionId: sessionId,
-                projectId: projectId,
-                editId: edit.edit_id || undefined,
-                status: edit.status || undefined,
-                documentContext: edit.document_context || undefined,
-                section_identifier: edit.section_identifier,
-                original_content: edit.original_content,
-                proposed_content: edit.proposed_content,
-                edit_reason: edit.edit_reason,
-                can_revert: edit.can_revert
-              }));
-            }
-            const allMessages = [...previousMessages, ...editHistoryMessages].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-            setMessages(allMessages);
-        }
-        
-        if (sessionData.agent_mode) {
-          setAgentMode(sessionData.agent_mode)
-        }
-        
-        if (sessionData.is_proposal_generated) {
-          setAgentMode('editor_mode')
-          fetchGeneratedDocument(sessionId)
-        }
-        
-        // Store initial_idea from session data
-        if (sessionData.session_data?.initial_idea) {
-          setInitialIdea(sessionData.session_data.initial_idea)
-        } else if (sessionData.initial_idea) {
-          setInitialIdea(sessionData.initial_idea)
-        }
-        
-      } catch (error) {
-      } finally {
-        // Remove from loading set after API call completes
-        loadingSessionRef.current.delete(sessionId)
-      }
-    }
-    
-    connect()
-  }, [socket, activeSessionId, connect])
-
-  const endSession = useCallback(() => {
-    
-    if (socket) {
-      socket.close(1000)
-      setSocket(null)
-    }
-    
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-      typingTimeoutRef.current = null
-    }
-    
-    setActiveSessionId(null)
-    setActiveProjectId(null)
-    setInitialIdea(null)
-    setConnectionStatus('disconnected')
-    setMessages([])
-    setCurrentDocument(null)
-    fetchedDocumentsRef.current.clear()
-    loadingSessionRef.current.clear()
-    setIsGeneratingProposal(false)
-    setCurrentStage(null)
-    setProgress(0)
-    setAgentMode('conversation')
-    setIsTyping(false)
-    currentMessageRef.current = ''
-    currentMessageIdRef.current = null
-    messageCounter.current = 0
-
-    setCurrentStreamingMessage(null)
-    setLatestEditSuggestion(null)
-  }, [socket])
 
   const clearMessages = useCallback(() => {
     setMessages([])
@@ -768,13 +671,19 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   const addMessage = useCallback((message: ChatMessage) => {
     setMessages(prev => {
-      // Check if message already exists (by content, type, and sessionId to prevent duplicates)
+      // First check by ID (most reliable)
+      const existsById = prev.some(msg => msg.id === message.id)
+      if (existsById) {
+        return prev // Don't add duplicate by ID
+      }
+      
+      // Then check by content, type, and sessionId to prevent duplicates
+      // For same session, same type, and same content, consider it duplicate
+      // Remove timestamp check as conversation history may have different timestamps
       const isDuplicate = prev.some(msg => 
         msg.type === message.type && 
         msg.content === message.content && 
-        msg.sessionId === message.sessionId &&
-        // Allow messages within 5 seconds to be considered duplicates (same message sent twice quickly)
-        Math.abs(new Date(msg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 5000
+        msg.sessionId === message.sessionId
       )
       
       if (isDuplicate) {
@@ -785,6 +694,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     })
     setIsTyping(false)
   }, [])
+
+  // Auto-connect WebSocket when component mounts
+  useEffect(() => {
+    if (connectionStatus === 'disconnected' && !socket) {
+      connect()
+    }
+  }, [connectionStatus, socket, connect])
 
   useEffect(() => {
     if (activeSessionId && pendingMessage && connectionStatus === 'connected' && socket?.readyState === WebSocket.OPEN) {
@@ -825,8 +741,6 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     acceptEdit,
     rejectEdit,
     requestEdit,
-    startSession,
-    endSession,
     clearMessages
   }
 
