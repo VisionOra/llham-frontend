@@ -1,7 +1,7 @@
 "use client"
 import Image from "next/image"
 import "@/styles/sidebar-settings-icon.css"
-import React, { useState } from "react"
+import React, { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
@@ -75,6 +75,7 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const [projectSessions, setProjectSessions] = useState<Map<string, Array<{id: string, title: string}>>>(new Map());
   const [loadingProjectSessions, setLoadingProjectSessions] = useState<Set<string>>(new Set());
   const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
 
   // Sync local state with context when context changes
   React.useEffect(() => {
@@ -524,7 +525,80 @@ export const ChatSidebar = React.memo(function ChatSidebar({
         // ...existing code for expanded sidebar...
         showProjects ? (
           /* Projects List with additional options */
-          <div className="flex-1 overflow-y-auto">
+          <div 
+            ref={sidebarScrollRef}
+            className="flex-1 overflow-y-auto sidebar-scrollbar"
+            onScroll={() => {
+              if (sidebarScrollRef.current) {
+                sidebarScrollRef.current.classList.add('scrolling')
+                clearTimeout((sidebarScrollRef.current as any).scrollTimeout)
+                ;(sidebarScrollRef.current as any).scrollTimeout = setTimeout(() => {
+                  if (sidebarScrollRef.current) {
+                    sidebarScrollRef.current.classList.remove('scrolling')
+                  }
+                }, 1000)
+              }
+            }}
+          >
+            <style dangerouslySetInnerHTML={{
+              __html: `
+                .sidebar-scrollbar {
+                  scrollbar-width: none; /* Firefox */
+                  -ms-overflow-style: none; /* IE and Edge */
+                }
+                .sidebar-scrollbar::-webkit-scrollbar {
+                  display: none; /* Chrome, Safari, Opera */
+                }
+                .sidebar-scrollbar:hover {
+                  scrollbar-width: thin; /* Firefox */
+                  scrollbar-color: #2a2a2a transparent; /* Firefox */
+                }
+                .sidebar-scrollbar:hover::-webkit-scrollbar {
+                  display: block; /* Chrome, Safari, Opera */
+                  width: 6px;
+                }
+                .sidebar-scrollbar:hover::-webkit-scrollbar-track {
+                  background: transparent;
+                }
+                .sidebar-scrollbar:hover::-webkit-scrollbar-thumb {
+                  background-color: #2a2a2a;
+                  border-radius: 3px;
+                }
+                .sidebar-scrollbar:hover::-webkit-scrollbar-thumb:hover {
+                  background-color: #3a3a3a;
+                }
+                .sidebar-scrollbar:active {
+                  scrollbar-width: thin;
+                  scrollbar-color: #2a2a2a transparent;
+                }
+                .sidebar-scrollbar:active::-webkit-scrollbar {
+                  display: block;
+                  width: 6px;
+                }
+                .sidebar-scrollbar:active::-webkit-scrollbar-track {
+                  background: transparent;
+                }
+                .sidebar-scrollbar:active::-webkit-scrollbar-thumb {
+                  background-color: #2a2a2a;
+                  border-radius: 3px;
+                }
+                .sidebar-scrollbar.scrolling {
+                  scrollbar-width: thin;
+                  scrollbar-color: #2a2a2a transparent;
+                }
+                .sidebar-scrollbar.scrolling::-webkit-scrollbar {
+                  display: block;
+                  width: 6px;
+                }
+                .sidebar-scrollbar.scrolling::-webkit-scrollbar-track {
+                  background: transparent;
+                }
+                .sidebar-scrollbar.scrolling::-webkit-scrollbar-thumb {
+                  background-color: #2a2a2a;
+                  border-radius: 3px;
+                }
+              `
+            }} />
             {/* Navigation Options */}
             <div className="p-4 space-y-2">
               <div 

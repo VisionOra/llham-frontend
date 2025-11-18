@@ -250,7 +250,7 @@ function ProjectSessionsContent() {
               ) : (
                 <>
                   <Plus className="w-4 h-4 mr-2" />
-                  New Session
+                  New Document
                 </>
               )}
             </Button>
@@ -258,12 +258,12 @@ function ProjectSessionsContent() {
         </div>
         {loadingSessions ? (
           <div className="flex items-center justify-center py-12">
-            <div className="text-gray-400">Loading sessions...</div>
+            <div className="text-gray-400">Loading documents...</div>
           </div>
         ) : projectSessions.length === 0 ? (
           <div className="text-center py-12">
             <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-500" />
-            <h3 className="text-lg font-medium text-white mb-2">No sessions yet</h3>
+            <h3 className="text-lg font-medium text-white mb-2">No documents yet</h3>
             <p className="text-gray-400 mb-6">Start your first conversation in this project</p>
             <Button 
               onClick={handleNewSession}
@@ -273,12 +273,12 @@ function ProjectSessionsContent() {
               {creatingSession ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating Session...
+                  Creating Document...
                 </>
               ) : (
                 <>
                   <Plus className="w-4 h-4 mr-2" />
-                  New Session
+                  New Document
                 </>
               )}
             </Button>

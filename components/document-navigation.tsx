@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useRef } from "react"
 import { ChevronLeft, ChevronRight, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -25,6 +25,7 @@ export function DocumentNavigation({
   onToggle
 }: DocumentNavigationProps) {
   const [headings, setHeadings] = useState<Heading[]>([])
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Parse HTML and extract headings
   useEffect(() => {
@@ -237,7 +238,47 @@ export function DocumentNavigation({
   // Render heading with proper indentation
   const renderHeading = (heading: Heading, index: number) => {
     const prevLevel = index > 0 ? headings[index - 1].level : 0
-    const marginLeft = (heading.level - 1) * 16 // 16px per level
+    const marginLeft = (heading.level - 1) * 20 // 20px per level for better hierarchy
+
+    // Different styling based on heading level
+    const getHeadingStyle = () => {
+      switch (heading.level) {
+        case 1:
+          return {
+            iconSize: 'w-4 h-4',
+            textSize: 'text-sm font-semibold',
+            iconColor: 'text-green-400',
+            textColor: 'text-white',
+            padding: 'py-2'
+          }
+        case 2:
+          return {
+            iconSize: 'w-3.5 h-3.5',
+            textSize: 'text-sm font-medium',
+            iconColor: 'text-green-500',
+            textColor: 'text-gray-200',
+            padding: 'py-1.5'
+          }
+        case 3:
+          return {
+            iconSize: 'w-3 h-3',
+            textSize: 'text-xs font-normal',
+            iconColor: 'text-gray-500',
+            textColor: 'text-gray-300',
+            padding: 'py-1'
+          }
+        default:
+          return {
+            iconSize: 'w-3 h-3',
+            textSize: 'text-xs',
+            iconColor: 'text-gray-600',
+            textColor: 'text-gray-400',
+            padding: 'py-1'
+          }
+      }
+    }
+
+    const style = getHeadingStyle()
 
     return (
       <div
@@ -248,12 +289,12 @@ export function DocumentNavigation({
           handleHeadingClick(heading)
         }}
         onMouseDown={(e) => e.preventDefault()}
-        className="cursor-pointer hover:bg-[#232326] active:bg-[#2a2a2a] px-2 py-1.5 rounded transition-colors text-sm select-none"
+        className={`cursor-pointer group ${style.padding} px-3 rounded-md transition-all duration-200 select-none border-l-2 border-transparent hover:border-green-500/50 hover:bg-[#232326]/80 active:bg-[#2a2a2a]`}
         style={{ marginLeft: `${marginLeft}px`, userSelect: 'none' }}
       >
-        <div className="flex items-center space-x-2">
-          <FileText className="w-3 h-3 text-gray-400 flex-shrink-0" />
-          <span className="text-gray-300 hover:text-white truncate">
+        <div className="flex items-center space-x-2.5">
+          <FileText className={`${style.iconSize} ${style.iconColor} flex-shrink-0 transition-colors group-hover:text-green-400`} />
+          <span className={`${style.textSize} ${style.textColor} truncate transition-colors group-hover:text-white`}>
             {heading.text}
           </span>
         </div>
@@ -262,22 +303,104 @@ export function DocumentNavigation({
   }
 
   return (
-    <div className="w-64 h-full border-r border-[#2a2a2a] bg-[#1a1a1a] flex flex-col rounded-l-full">
+    <div className="w-64 h-full border-r border-[#2a2a2a] bg-gradient-to-b from-[#1a1a1a] to-[#151515] flex flex-col shadow-lg" style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.1)' }}>
       {/* Header */}
-      <div className="flex items-center p-2 border-b border-[#2a2a2a]">
-        <h3 className="text-sm font-semibold text-white">Table of contents</h3>
+      <div className="flex items-center justify-between p-3 border-b border-[#2a2a2a] bg-[#1a1a1a]/50 backdrop-blur-sm">
+        <div className="flex items-center space-x-2">
+          <FileText className="w-4 h-4 text-green-400" />
+          <h3 className="text-sm font-semibold text-white">Table of contents</h3>
+        </div>
+        {headings.length > 0 && (
+          <span className="text-xs text-gray-500 bg-[#232326] px-2 py-0.5 rounded-full">
+            {headings.length}
+          </span>
+        )}
       </div>
 
       {/* Navigation Tree */}
-      <div className="flex-1 overflow-y-auto p-2">
-        
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto p-3 toc-scrollbar"
+        onScroll={() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.classList.add('scrolling')
+            clearTimeout((scrollContainerRef.current as any).scrollTimeout)
+            ;(scrollContainerRef.current as any).scrollTimeout = setTimeout(() => {
+              if (scrollContainerRef.current) {
+                scrollContainerRef.current.classList.remove('scrolling')
+              }
+            }, 1000)
+          }
+        }}
+      >
+        <style dangerouslySetInnerHTML={{
+          __html: `
+            .toc-scrollbar {
+              scrollbar-width: none; /* Firefox */
+              -ms-overflow-style: none; /* IE and Edge */
+            }
+            .toc-scrollbar::-webkit-scrollbar {
+              display: none; /* Chrome, Safari, Opera */
+            }
+            .toc-scrollbar:hover {
+              scrollbar-width: thin; /* Firefox */
+              scrollbar-color: #2a2a2a transparent; /* Firefox */
+            }
+            .toc-scrollbar:hover::-webkit-scrollbar {
+              display: block; /* Chrome, Safari, Opera */
+              width: 6px;
+            }
+            .toc-scrollbar:hover::-webkit-scrollbar-track {
+              background: transparent;
+            }
+            .toc-scrollbar:hover::-webkit-scrollbar-thumb {
+              background-color: #2a2a2a;
+              border-radius: 3px;
+            }
+            .toc-scrollbar:hover::-webkit-scrollbar-thumb:hover {
+              background-color: #3a3a3a;
+            }
+            .toc-scrollbar:active {
+              scrollbar-width: thin;
+              scrollbar-color: #2a2a2a transparent;
+            }
+            .toc-scrollbar:active::-webkit-scrollbar {
+              display: block;
+              width: 6px;
+            }
+            .toc-scrollbar:active::-webkit-scrollbar-track {
+              background: transparent;
+            }
+            .toc-scrollbar:active::-webkit-scrollbar-thumb {
+              background-color: #2a2a2a;
+              border-radius: 3px;
+            }
+            .toc-scrollbar.scrolling {
+              scrollbar-width: thin;
+              scrollbar-color: #2a2a2a transparent;
+            }
+            .toc-scrollbar.scrolling::-webkit-scrollbar {
+              display: block;
+              width: 6px;
+            }
+            .toc-scrollbar.scrolling::-webkit-scrollbar-track {
+              background: transparent;
+            }
+            .toc-scrollbar.scrolling::-webkit-scrollbar-thumb {
+              background-color: #2a2a2a;
+              border-radius: 3px;
+            }
+          `
+        }} />
         {headings.length > 0 ? (
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {headings.map((heading, index) => renderHeading(heading, index))}
           </div>
         ) : (
-          <div className="px-2 py-4 text-center text-gray-500 text-xs">
-            No headings found
+          <div className="flex flex-col items-center justify-center h-full px-4 py-8 text-center">
+            <FileText className="w-12 h-12 text-gray-600 mb-3 opacity-50" />
+            <p className="text-gray-500 text-sm font-medium">No headings found</p>
+            <p className="text-gray-600 text-xs mt-1">Document headings will appear here</p>
           </div>
         )}
       </div>
