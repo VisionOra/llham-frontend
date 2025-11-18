@@ -253,20 +253,22 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             case 'ai_message':
               setMessages(prev => {
                 // Check if this AI message already exists to prevent duplicates
+                // Check by content and sessionId, and within last 10 seconds (increased window)
                 const isDuplicate = prev.some(msg => 
                   msg.type === 'ai' && 
                   msg.content === data.message && 
                   msg.sessionId === data.session_id &&
-                  // Check if message was added within last 5 seconds
-                  Math.abs(new Date(msg.timestamp).getTime() - Date.now()) < 5000
+                  // Check if message was added within last 10 seconds (increased from 5 to catch API duplicates)
+                  Math.abs(new Date(msg.timestamp).getTime() - Date.now()) < 10000
                 )
                 
                 if (isDuplicate) {
+                  console.log('Duplicate AI message from WebSocket detected, skipping:', data.message?.substring(0, 50))
                   return prev // Don't add duplicate
                 }
                 
                 return [...prev, {
-                  id: Date.now().toString(),
+                  id: `ws-ai-${data.session_id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                   type: 'ai',
                   content: data.message,
                   timestamp: new Date(),
@@ -598,8 +600,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           return prev // Don't add duplicate
         }
         
+        // Create unique message ID to prevent duplicates
+        const messageId = `user-ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         return [...prev, {
-          id: Date.now().toString(),
+          id: messageId,
           type: 'user',
           content: displayMessage,
           timestamp: new Date(),
@@ -677,16 +681,58 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         return prev // Don't add duplicate by ID
       }
       
-      // Then check by content, type, and sessionId to prevent duplicates
+      // For user messages, check for duplicates more strictly
+      // Check by exact content match first (most reliable), then by timestamp window
+      if (message.type === 'user') {
+        // First check: exact content match with same session (strictest check)
+        const exactDuplicate = prev.some(msg => 
+          msg.type === 'user' && 
+          msg.content === message.content && 
+          msg.sessionId === message.sessionId
+        )
+        
+        if (exactDuplicate) {
+          console.log('Duplicate user message detected (exact match), skipping:', message.content.substring(0, 50))
+          return prev // Don't add duplicate user message with exact same content
+        }
+        
+        // Second check: similar content within last 30 seconds (for conversation history with different timestamps)
+        const recentDuplicate = prev.some(msg => 
+          msg.type === 'user' && 
+          msg.content === message.content && 
+          msg.sessionId === message.sessionId &&
+          // Check if message was added within last 30 seconds (increased to catch conversation history duplicates)
+          Math.abs(new Date(msg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 30000
+        )
+        
+        if (recentDuplicate) {
+          console.log('Duplicate user message detected (recent), skipping:', message.content.substring(0, 50))
+          return prev // Don't add duplicate user message within 30 seconds
+        }
+        
+        return [...prev, message]
+      }
+      
+      // Then check by content, type, and sessionId to prevent duplicates for AI/system messages
       // For same session, same type, and same content, consider it duplicate
-      // Remove timestamp check as conversation history may have different timestamps
-      const isDuplicate = prev.some(msg => 
-        msg.type === message.type && 
-        msg.content === message.content && 
-        msg.sessionId === message.sessionId
-      )
+      // Check timestamp for AI messages too (within 10 seconds) to prevent API + WebSocket duplicates
+      // But skip timestamp check if message ID suggests it's from conversation history (starts with 'history-')
+      const isDuplicate = prev.some(msg => {
+        const sameContent = msg.type === message.type && 
+                            msg.content === message.content && 
+                            msg.sessionId === message.sessionId
+        
+        // For conversation history messages (id starts with 'history-'), only check content
+        if (message.id?.startsWith('history-')) {
+          return sameContent
+        }
+        
+        // For other messages, also check timestamp within 10 seconds to catch API/WebSocket duplicates
+        return sameContent && Math.abs(new Date(msg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 10000
+      })
       
       if (isDuplicate) {
+        console.log('Duplicate message detected in addMessage, skipping:', message.content?.substring(0, 50))
         return prev // Don't add duplicate
       }
       

@@ -37,7 +37,7 @@ function ChatPageContent() {
   const [isResizing, setIsResizing] = useState(false)
   const [isResizingProposal, setIsResizingProposal] = useState(false)
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const sidebarWidth = sidebarCollapsed ? 64 : 256
 
   const [hasDocument, setHasDocument] = useState(false)
@@ -268,6 +268,8 @@ function ChatPageContent() {
       console.log("Loading conversation history for session:", sessionId, sessionData.conversation_history?.length, "messages")
       
       if (sessionData.conversation_history && Array.isArray(sessionData.conversation_history)) {
+        // Get current messages to check for duplicates before adding
+        // We'll pass messages context through addMessage, but for now rely on addMessage's duplicate detection
         // Add all messages from conversation history
         sessionData.conversation_history.forEach((msg: any, index: number) => {
           // Create unique ID using message_hash if available
@@ -276,6 +278,7 @@ function ChatPageContent() {
             : `history-${sessionId}-${index}-${Date.now()}-${index}`
           
           // Add message - addMessage function will handle duplicate checking
+          // For user messages, addMessage will check for exact content matches regardless of timestamp
           addMessage({
             id: messageId,
             type: msg.role === 'user' ? 'user' : 'ai',
@@ -287,7 +290,7 @@ function ChatPageContent() {
           })
         })
         
-        console.log("Conversation history loaded:", sessionData.conversation_history.length, "messages added")
+        console.log("Conversation history loaded:", sessionData.conversation_history.length, "messages processed")
       }
     } catch (error) {
       console.error("Error loading conversation history:", error)
@@ -360,9 +363,10 @@ function ChatPageContent() {
         // Mark as processed before adding to prevent duplicates
         pendingMessageProcessedRef.current.add(sessionId)
         
-        // Add user message instantly to chat
+        // Add user message instantly to chat with unique ID
+        const storedMessageId = `user-stored-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         addMessage({
-          id: `user-${Date.now()}`,
+          id: storedMessageId,
           type: 'user',
           content: storedMessage,
           timestamp: new Date(),
@@ -480,6 +484,26 @@ function ChatPageContent() {
     }
   }, [wsCurrentDocument, hasDocument])
 
+  // Map WebSocket html_content updates to proposalHtml
+  useEffect(() => {
+    if (wsCurrentDocument?.content && sessionId === activeSessionId) {
+      const htmlContent = wsCurrentDocument.content
+      // Check if this is proposal HTML (contains proposal-like structure)
+      // If it has html_content or looks like proposal HTML, map it to proposalHtml
+      if (htmlContent && typeof htmlContent === 'string' && htmlContent.trim().length > 0) {
+        // Check if it's not a default message and looks like HTML content
+        if (!isDefaultProposalMessage(htmlContent) && 
+            (htmlContent.includes('<h1>') || htmlContent.includes('<h2>') || htmlContent.includes('<section'))) {
+          setProposalHtml(htmlContent)
+          if (wsCurrentDocument.title) {
+            setProposalTitle(wsCurrentDocument.title)
+          }
+          setShowProposalPanel(true)
+        }
+      }
+    }
+  }, [wsCurrentDocument, sessionId, activeSessionId])
+
 
 
 
@@ -548,6 +572,8 @@ function ChatPageContent() {
         onNewProject={handleNewProject}
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
+        activeProjectId={projectId}
+        activeSessionId={sessionId}
       />
 
       {/* Main Content Area */}

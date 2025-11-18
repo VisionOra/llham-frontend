@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown"
 import { useWebSocket } from "@/contexts/websocket-context"
 import { communicateWithMasterAgent } from "@/lib/api"
 import AutoGrowTextarea from "./AutoGrowTextarea"
+import { AgentSearchBar } from "./agent-search-bar"
 
 const SUGGESTED_MESSAGES = [
   "generate proposal",
@@ -257,6 +258,110 @@ export const ChatInterface = React.memo(function ChatInterface({
     textareaRef.current?.focus()
   }, [setInputValue])
 
+  // Helper function to send a message directly (used for agent selection)
+  const sendMessageDirectly = useCallback(async (messageText: string) => {
+    if (!messageText.trim()) return;
+
+    if (isWelcomeMode) {
+      onNewChat(messageText);
+      return;
+    }
+
+    if (!sessionId) {
+      return;
+    }
+
+    const inputText = messageText.trim();
+    const formatted = formatMessageForDisplay(inputText);
+
+    // Prepare message for communicate API
+    const messageToSend = currentSelectedText && currentSelectedText.trim() 
+      ? `${currentSelectedText} ${inputText}`
+      : formatted.isPastedContent && formatted.userRequest && formatted.pastedText
+      ? `${formatted.pastedText} ${formatted.userRequest}`
+      : inputText;
+
+    // Add user message instantly to chat (before API call) - MUST be done first
+    const displayMessage = currentSelectedText && currentSelectedText.trim() 
+      ? `${currentSelectedText} ${inputText}`
+      : formatted.isPastedContent && formatted.userRequest && formatted.pastedText
+      ? `${formatted.pastedText} ${formatted.userRequest}`
+      : inputText;
+
+    // Create unique message ID
+    const userMessageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create message object
+    const userMessage = {
+      id: userMessageId,
+      type: 'user' as const,
+      content: displayMessage,
+      timestamp: new Date(),
+      sessionId: sessionId || undefined,
+      projectId: projectId || undefined,
+      isStreaming: false
+    };
+    
+    // Add user message FIRST, synchronously, before any async operations
+    addMessage(userMessage);
+    
+    // Force a re-render by using requestAnimationFrame
+    requestAnimationFrame(() => {
+      // Scroll to show the message
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
+
+    // Clear selected text after adding message
+    if (currentSelectedText && currentSelectedText.trim()) {
+      clearSelectedText();
+    }
+
+    // Set typing indicator AFTER message is added
+    // Use a longer delay to ensure message is rendered and visible
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setIsUserTyping(true);
+
+    try {
+      // Call communicate API first
+      const response = await communicateWithMasterAgent({
+        session_id: sessionId,
+        project_id: projectId || undefined,
+        message: messageToSend
+      });
+
+      // Handle message from response - add it to chat messages
+      // Use a unique ID with random component to prevent duplicates if WebSocket also sends the same message
+      if (response.message) {
+        const aiMessageId = `api-${sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        addMessage({
+          id: aiMessageId,
+          type: 'ai',
+          content: response.message,
+          timestamp: new Date(),
+          sessionId: sessionId || undefined,
+          projectId: projectId || undefined,
+          isStreaming: false
+        });
+      }
+
+      // Handle proposal_html if present in response
+      if (response.proposal_html && onProposalHtmlReceived) {
+        onProposalHtmlReceived(response.proposal_html, response.proposal_title);
+      }
+
+      // Always hide typing indicator after API response is received (whether message exists or not)
+      setIsUserTyping(false);
+
+      // Note: User message already added instantly above, so we don't need to send via WebSocket
+      // The communicate API handles the message, and we've already displayed the user message
+    } catch (error) {
+      console.error("Error communicating with master agent:", error);
+      setIsUserTyping(false);
+      // User message already displayed, so we don't need to send via WebSocket
+      // Error handling: message is already shown to user
+    }
+  }, [isWelcomeMode, onNewChat, formatMessageForDisplay, addMessage, currentSelectedText, clearSelectedText, sessionId, projectId, onProposalHtmlReceived])
+
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim()) return;
 
@@ -302,8 +407,11 @@ export const ChatInterface = React.memo(function ChatInterface({
       ? `${formatted.pastedText} ${formatted.userRequest}`
       : inputText;
 
+    // Create unique message ID to prevent duplicates
+    const userMessageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     addMessage({
-      id: `user-${Date.now()}`,
+      id: userMessageId,
       type: 'user',
       content: displayMessage,
       timestamp: new Date(),
@@ -326,9 +434,11 @@ export const ChatInterface = React.memo(function ChatInterface({
       });
 
       // Handle message from response - add it to chat messages
+      // Use a unique ID with random component to prevent duplicates if WebSocket also sends the same message
       if (response.message) {
+        const aiMessageId = `api-${sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         addMessage({
-          id: `api-${Date.now()}`,
+          id: aiMessageId,
           type: 'ai',
           content: response.message,
           timestamp: new Date(),
@@ -485,12 +595,24 @@ export const ChatInterface = React.memo(function ChatInterface({
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a] min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-3  sm:p-4 border-b border-[#2a2a2a] flex-shrink-0">
+      <div className="flex items-center justify-between p-3 sm:p-4 border-b border-[#2a2a2a] flex-shrink-0 gap-3">
         <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
           <div className="flex items-center space-x-1.5 sm:space-x-2 min-w-0">
             <Bot className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 flex-shrink-0" />
             <h2 className="text-base sm:text-lg font-semibold text-white truncate">{isDocumentMode ? "Document Assistant" : "LLHAM AI"}</h2>
           </div>
+        </div>
+        
+        {/* Agent Search Bar */}
+        <div className="flex-shrink-0 min-w-0">
+          <AgentSearchBar 
+            sessionId={sessionId || undefined}
+            onAgentSelect={(agent) => {
+              // Send message with agent name
+              const message = `use this agent ${agent.name}`
+              sendMessageDirectly(message)
+            }}
+          />
         </div>
       </div>
 
