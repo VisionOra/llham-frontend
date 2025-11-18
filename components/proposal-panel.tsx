@@ -130,7 +130,8 @@ export function ProposalPanel({
 
   return (
     <>
-      {/* Mobile/Tablet: Full Screen Overlay */}
+      {/* Mobile/Tablet: Full Screen Overlay - Only show when forceFullWidth is true (for standalone view) */}
+      {forceFullWidth && (
       <div
         className={`lg:hidden fixed inset-0 z-50 flex flex-col ${showProposalPanel ? 'block' : 'hidden'}`}
         style={{ backgroundColor: '#0A0A0A' }}
@@ -373,15 +374,16 @@ export function ProposalPanel({
           )}
         </div>
       </div>
+      )}
 
-      {/* Desktop: Side Panel */}
+      {/* Desktop & Mobile/Tablet: Side Panel (when forceFullWidth is false, shows in tab layout) */}
       <div
-        className={`hidden lg:flex flex-col h-full border-l border-gray-800 shadow-xl relative ${!isResizingProposal ? 'transition-all duration-200' : ''} min-w-0`}
+        className={`${forceFullWidth ? 'hidden lg:flex' : 'flex'} flex-col h-full border-l border-gray-800 shadow-xl relative ${!isResizingProposal ? 'transition-all duration-200' : ''} min-w-0`}
         style={{ 
           backgroundColor: '#1A1A1A',
-          width: panelWidth, 
+          width: forceFullWidth ? panelWidth : '100%', 
           maxWidth: '100%',
-          minWidth: '300px'
+          minWidth: forceFullWidth ? '300px' : '0'
         }}
       >
         {/* Panel Header - Fixed at top */}

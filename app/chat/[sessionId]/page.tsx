@@ -618,7 +618,8 @@ function ChatPageContent() {
             )}
 
             <div className="flex-1 flex h-full min-h-0 overflow-x-hidden">
-              {showProposalPanel ? (
+              {/* Proposal Panel - Show on desktop always, on mobile/tablet only when activeTab is 'proposal' */}
+              {showProposalPanel && (
                 <div
                   className={`flex-1 min-w-0 ${activeTab === 'proposal' ? 'flex' : 'hidden'} md:flex flex-col`}
                 >
@@ -652,16 +653,13 @@ function ChatPageContent() {
                       onResizeStart={handleProposalResizeStart}
                       onProposalHtmlUpdate={setProposalHtml}
                       isLoading={loadingProposalHtml}
-                      forceFullWidth
+                      forceFullWidth={false}
                     />
                   </div>
                 </div>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-gray-400">
-                  <p>Proposal is not available yet. Start chatting to generate one.</p>
-                </div>
               )}
 
+              {/* Chat Interface - Show on desktop always, on mobile/tablet only when activeTab is 'chat' */}
               <div
                 className={`flex flex-col h-full min-h-0 relative overflow-hidden border-l border-[#2a2a2a] ${activeTab === 'chat' ? 'flex' : 'hidden'} md:flex`}
                 style={{ width: typeof window !== 'undefined' && window.innerWidth < 850 ? `calc(100vw - ${sidebarWidth}px)` : `${chatWidth}px` }}
