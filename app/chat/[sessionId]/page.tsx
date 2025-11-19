@@ -8,7 +8,7 @@ import { ChatSidebar } from "@/components/chat-sidebar"
 import { AuthGuard } from "@/components/auth-guard"
 import { useAuth } from "@/contexts/auth-context"
 import { useWebSocket } from "@/contexts/websocket-context"
-import { getDocumentContent, getProposedHtml, getSessionHistory } from "@/lib/api"
+import { getDocumentContent, getProposedHtml, communicateWithMasterAgent } from "@/lib/api"
 import { ProposalPanel } from "@/components/proposal-panel"
 
 
@@ -30,7 +30,9 @@ function ChatPageContent() {
     messages: wsMessages,
     connectionStatus,
     sendRawMessage,
-    addMessage
+    addMessage,
+    isTyping,
+    setIsTyping
   } = useWebSocket()
 
   const [chatWidth, setChatWidth] = useState(450) // Chat width in pixels
@@ -50,6 +52,7 @@ function ChatPageContent() {
   const [showProposalPanel, setShowProposalPanel] = useState(false)
   const [loadingProposalHtml, setLoadingProposalHtml] = useState(false)
   const [proposalPanelWidth, setProposalPanelWidth] = useState(500)
+  const [isPageReady, setIsPageReady] = useState(false)
 
   const loadedSessionsRef = useRef<Set<string>>(new Set())
   const pendingMessageProcessedRef = useRef<Set<string>>(new Set())
@@ -111,68 +114,12 @@ function ChatPageContent() {
     setIsResizingProposal(true)
   }
 
-  // Load document for session (using exact logic from old working code)
+  // Load document for session - disabled to prevent unnecessary GET calls
+  // WebSocket handles document updates via wsCurrentDocument
   const loadSessionDocument = useCallback(async (sessionId: string) => {
-    if (loadingDocument || loadedSessionsRef.current.has(sessionId)) {
-      return
-    }
-
-    try {
-      setLoadingDocument(true)
-      loadedSessionsRef.current.add(sessionId)
-      
-      const documentContent = await getDocumentContent(sessionId)
-      
-      if (!documentContent || documentContent.error || documentContent.message) {
-        setHasDocument(false)
-        setCurrentDocument(null)
-        setLoadingDocument(false)
-        return
-      }
-      
-      let content
-      if (documentContent?.document && typeof documentContent.document === 'object') {
-        content = documentContent.document.content || 
-                 documentContent.document.html_content || 
-                 documentContent.document.body ||
-                 documentContent.document.document
-      } else {
-        content = documentContent?.document || 
-                 documentContent?.content || 
-                 documentContent?.html_content || 
-                 documentContent?.body ||
-                 documentContent?.proposal_content
-      }
-      
-           const hasActualContent = content && typeof content === 'string' && content.trim().length > 0
-      
-      if (hasActualContent) {
-        setHasDocument(true)
-        
-        const documentForViewer = {
-          id: documentContent.id || sessionId,
-          title: documentContent.title || documentContent.proposal_title || 'Document',
-          content: content,
-          created_at: documentContent.created_at,
-          updated_at: documentContent.updated_at,
-          author:  'Artilence'
-        }
-        
-        setCurrentDocument(documentForViewer)
-      } else {
-        setHasDocument(false)
-        setCurrentDocument(null)
-      }
-    } catch (error) {
-      
-      loadedSessionsRef.current.delete(sessionId)
-     
-      setHasDocument(false)
-      setCurrentDocument(null)
-    } finally {
-      setLoadingDocument(false)
-    }
-  }, [loadingDocument])
+    // Disabled - unnecessary GET call, WebSocket handles document updates
+    return
+  }, [])
 
   // Helper function to check if html_content is empty or default "No Proposal Generated Yet" message
   const isDefaultProposalMessage = (htmlContent: string | null | undefined): boolean => {
@@ -195,6 +142,7 @@ function ChatPageContent() {
   }
 
   // Load proposed HTML on page refresh/load
+  // This endpoint is needed to restore proposal view after page refresh
   const loadProposedHtml = useCallback(async (sessionId: string, projectId: string | null, forceReload: boolean = false) => {
     if (!projectId) {
       return
@@ -220,6 +168,27 @@ function ChatPageContent() {
       
       // Mark as loaded
       loadedProposedHtmlRef.current.add(loadKey)
+      
+      // Load conversation history from response if available
+      if (response.conversation_history && Array.isArray(response.conversation_history) && addMessage) {
+        response.conversation_history.forEach((msg: any, index: number) => {
+          // Create unique ID using message_hash if available
+          const messageId = msg.message_hash 
+            ? `proposed-html-${sessionId}-${index}-${msg.message_hash}`
+            : `proposed-html-${sessionId}-${index}-${Date.now()}-${index}`
+          
+          // Add message - addMessage function will handle duplicate checking
+          addMessage({
+            id: messageId,
+            type: msg.role === 'user' ? 'user' : 'ai',
+            content: msg.message,
+            timestamp: new Date(msg.timestamp),
+            sessionId: sessionId,
+            projectId: projectId || undefined,
+            isStreaming: false
+          })
+        })
+      }
       
       if (response.html_content && !isDefaultProposalMessage(response.html_content)) {
         // Only set proposalHtml if it's actual content (not default message)
@@ -250,53 +219,13 @@ function ChatPageContent() {
       loadingProposedHtmlRef.current.delete(loadKey)
       setLoadingProposalHtml(false)
     }
-  }, []) // Removed proposalHtml from dependencies to prevent unnecessary recreations
+  }, [isDefaultProposalMessage, addMessage])
 
-  // Load conversation history
+  // Load conversation history - removed (resume endpoint no longer used)
   const loadConversationHistory = useCallback(async (sessionId: string) => {
-    if (!sessionId || !addMessage) return
-    
-    // Prevent duplicate loads
-    if (loadedHistoryRef.current.has(sessionId)) {
-      return
-    }
-    
-    try {
-      loadedHistoryRef.current.add(sessionId)
-      const sessionData = await getSessionHistory(sessionId)
-      
-      console.log("Loading conversation history for session:", sessionId, sessionData.conversation_history?.length, "messages")
-      
-      if (sessionData.conversation_history && Array.isArray(sessionData.conversation_history)) {
-        // Get current messages to check for duplicates before adding
-        // We'll pass messages context through addMessage, but for now rely on addMessage's duplicate detection
-        // Add all messages from conversation history
-        sessionData.conversation_history.forEach((msg: any, index: number) => {
-          // Create unique ID using message_hash if available
-          const messageId = msg.message_hash 
-            ? `history-${sessionId}-${index}-${msg.message_hash}`
-            : `history-${sessionId}-${index}-${Date.now()}-${index}`
-          
-          // Add message - addMessage function will handle duplicate checking
-          // For user messages, addMessage will check for exact content matches regardless of timestamp
-          addMessage({
-            id: messageId,
-            type: msg.role === 'user' ? 'user' : 'ai',
-            content: msg.message,
-            timestamp: new Date(msg.timestamp),
-            sessionId: sessionId,
-            projectId: projectId || undefined,
-            isStreaming: false
-          })
-        })
-        
-        console.log("Conversation history loaded:", sessionData.conversation_history.length, "messages processed")
-      }
-    } catch (error) {
-      console.error("Error loading conversation history:", error)
-      loadedHistoryRef.current.delete(sessionId) // Remove on error so it can retry
-    }
-  }, [addMessage, projectId, sessionId])
+    // Function disabled - resume endpoint removed
+    return
+  }, [])
 
   // Load document and proposal HTML when sessionId changes
   useEffect(() => {
@@ -307,10 +236,7 @@ function ChatPageContent() {
         loadSessionDocument(sessionId)
       }
       
-      // Load conversation history when WebSocket is connected
-      if (!loadedHistoryRef.current.has(sessionId) && connectionStatus === 'connected') {
-        loadConversationHistory(sessionId)
-      }
+      // Conversation history loading removed (resume endpoint no longer used)
       
       // Load proposed HTML when session changes (only once)
       if (projectId) {
@@ -332,12 +258,82 @@ function ChatPageContent() {
     }
   }, [sessionId, projectId, loadSessionDocument, loadProposedHtml])
 
-  // Load conversation history when WebSocket connects
+  // Conversation history loading removed (resume endpoint no longer used)
+
+  // Mark page as ready when WebSocket is connected and session is loaded
   useEffect(() => {
-    if (sessionId && connectionStatus === 'connected' && !loadedHistoryRef.current.has(sessionId)) {
-      loadConversationHistory(sessionId)
+    if (sessionId && connectionStatus === 'connected') {
+      // Small delay to ensure everything is initialized
+      const timer = setTimeout(() => {
+        setIsPageReady(true)
+      }, 300) // 300ms delay to ensure smooth transition
+      return () => clearTimeout(timer)
+    } else {
+      setIsPageReady(false)
     }
-  }, [sessionId, connectionStatus, loadConversationHistory])
+  }, [sessionId, connectionStatus])
+
+  // Function to handle communicate response
+  const handleCommunicateResponse = useCallback(() => {
+    if (!sessionId || connectionStatus !== 'connected') return
+    
+    const storedResponse = sessionStorage.getItem('pendingCommunicateResponse')
+    if (!storedResponse) return
+    
+    try {
+      const response = JSON.parse(storedResponse)
+      
+      // Only process if it's for the current session
+      if (response.session_id === sessionId) {
+        // Hide typing indicator when response is processed
+        setIsTyping(false)
+        
+        // Check if AI message already exists in messages
+        const hasAiMessage = wsMessages.some(msg => 
+          msg.type === 'ai' && 
+          msg.content === response.message && 
+          msg.sessionId === sessionId
+        )
+        
+        if (!hasAiMessage) {
+          // Use setTimeout to ensure user message is added first
+          setTimeout(() => {
+            // Add AI message to chat if it exists
+            if (response.message && addMessage) {
+              addMessage({
+                id: `communicate-${Date.now()}`,
+                type: 'ai',
+                content: response.message,
+                timestamp: new Date(),
+                sessionId: sessionId,
+                projectId: projectId || undefined,
+                isStreaming: false
+              })
+            }
+          }, 100) // Small delay to ensure user message is added first
+        }
+        
+        // Show proposal panel if proposal_html exists and it's actual content (not default message)
+        if (response.proposal_html && !isDefaultProposalMessage(response.proposal_html)) {
+          setProposalHtml(response.proposal_html)
+          setProposalTitle(response.proposal_title || 'Proposal Preview')
+          setShowProposalPanel(true)
+        } else if (response.proposal_html) {
+          // If it's default message, don't show panel
+          setProposalHtml(null)
+          setShowProposalPanel(false)
+        }
+        
+        // Clean up sessionStorage
+        sessionStorage.removeItem('pendingCommunicateResponse')
+      }
+    } catch (error) {
+      // Hide typing indicator on error
+      setIsTyping(false)
+      console.error("Error parsing communicate response:", error)
+      sessionStorage.removeItem('pendingCommunicateResponse')
+    }
+  }, [sessionId, connectionStatus, wsMessages, addMessage, projectId, isDefaultProposalMessage, setIsTyping])
 
   // Check sessionStorage for pending message and communicate response when session starts
   useEffect(() => {
@@ -378,6 +374,41 @@ function ChatPageContent() {
         // Clean up user message from sessionStorage
         sessionStorage.removeItem('pendingMessage')
         sessionStorage.removeItem('pendingSessionId')
+        
+        // Call communicateWithMasterAgent API in the background
+        // This will show the response in chat interface
+        if (projectId && storedMessage) {
+          // Show typing indicator
+          setIsTyping(true)
+          
+          communicateWithMasterAgent({
+            session_id: sessionId,
+            project_id: projectId,
+            message: storedMessage.trim()
+          }).then((communicateResponse) => {
+            // Hide typing indicator when response arrives
+            setIsTyping(false)
+            
+            // Store communicate response to handle it below
+            if (communicateResponse) {
+              sessionStorage.setItem('pendingCommunicateResponse', JSON.stringify({
+                message: communicateResponse.message,
+                proposal_html: communicateResponse.proposal_html,
+                proposal_title: communicateResponse.proposal_title,
+                session_id: communicateResponse.session_id
+              }))
+              // Trigger a re-check of pendingCommunicateResponse
+              // by setting a flag or re-running the effect logic
+              const event = new Event('communicateResponseReady')
+              window.dispatchEvent(event)
+            }
+          }).catch((error) => {
+            // Hide typing indicator on error
+            setIsTyping(false)
+            console.error("Error calling communicate API:", error)
+            // Continue even if communicate API fails
+          })
+        }
       } else if (storedMessage && storedSessionId === sessionId && hasUserMessage) {
         // Message already exists, just clean up sessionStorage
         pendingMessageProcessedRef.current.add(sessionId)
@@ -385,90 +416,35 @@ function ChatPageContent() {
         sessionStorage.removeItem('pendingSessionId')
       }
       
-      // Then, handle communicate response (AI message) after a small delay to ensure user message is added first
+      // Then, handle communicate response (AI message) if it exists
       if (storedResponse) {
-        try {
-          const response = JSON.parse(storedResponse)
-          
-          // Only process if it's for the current session
-          if (response.session_id === sessionId) {
-            // Check if AI message already exists in messages
-            const hasAiMessage = wsMessages.some(msg => 
-              msg.type === 'ai' && 
-              msg.content === response.message && 
-              msg.sessionId === sessionId
-            )
-            
-            if (!hasAiMessage) {
-              // Use setTimeout to ensure user message is added first
-              setTimeout(() => {
-                // Add AI message to chat if it exists
-                if (response.message && addMessage) {
-                  addMessage({
-                    id: `communicate-${Date.now()}`,
-                    type: 'ai',
-                    content: response.message,
-                    timestamp: new Date(),
-                    sessionId: sessionId,
-                    projectId: projectId || undefined,
-                    isStreaming: false
-                  })
-                }
-              }, 100) // Small delay to ensure user message is added first
-            }
-            
-            // Show proposal panel if proposal_html exists and it's actual content (not default message)
-            if (response.proposal_html && !isDefaultProposalMessage(response.proposal_html)) {
-              setProposalHtml(response.proposal_html)
-              setProposalTitle(response.proposal_title || 'Proposal Preview')
-              setShowProposalPanel(true)
-            } else if (response.proposal_html) {
-              // If it's default message, don't show panel
-              setProposalHtml(null)
-              setShowProposalPanel(false)
-            }
-            
-            // Clean up sessionStorage
-            sessionStorage.removeItem('pendingCommunicateResponse')
-          }
-        } catch (error) {
-          console.error("Error parsing pending communicate response:", error)
-          sessionStorage.removeItem('pendingCommunicateResponse')
-        }
+        handleCommunicateResponse()
       }
     }
-  }, [sessionId, activeSessionId, connectionStatus, projectId, addMessage, wsMessages])
+  }, [sessionId, activeSessionId, connectionStatus, projectId, addMessage, wsMessages, handleCommunicateResponse])
 
-  // Function to refresh document content from API (exact from old working code)
-  const refreshDocumentContent = useCallback(async () => {
-    if (!sessionId || !hasDocument) return
-    
-    try {
-      const documentContent = await getDocumentContent(sessionId)      
-      const refreshedDocument = {
-        id: documentContent.id || sessionId,
-        title: documentContent.title || currentDocument?.title || 'Document',
-        content: documentContent.document || documentContent.content || documentContent.html_content || documentContent.body,
-        created_at: documentContent.created_at || currentDocument?.created_at,
-        updated_at: documentContent.updated_at || new Date().toISOString(),
-        author: documentContent.created_by || currentDocument?.author || 'Artilence'
-      }
-      
-      setCurrentDocument(refreshedDocument)
-    } catch (error) {
-    }
-  }, [sessionId, hasDocument])
-
+  // Listen for communicate response ready event
   useEffect(() => {
-    if (hasDocument && wsMessages.length > 0) {
-      const lastMessage = wsMessages[wsMessages.length - 1]
-      if (lastMessage.type === 'ai' && !lastMessage.isStreaming) {
-        setTimeout(() => {
-          refreshDocumentContent()
-        }, 1000)
-      }
+    const handleCommunicateResponseReady = () => {
+      handleCommunicateResponse()
     }
-  }, [wsMessages, hasDocument, refreshDocumentContent])
+    
+    window.addEventListener('communicateResponseReady', handleCommunicateResponseReady)
+    
+    return () => {
+      window.removeEventListener('communicateResponseReady', handleCommunicateResponseReady)
+    }
+  }, [handleCommunicateResponse])
+
+  // Function to refresh document content from API - removed to prevent unnecessary GET calls
+  // WebSocket already provides document updates via wsCurrentDocument
+  const refreshDocumentContent = useCallback(async () => {
+    // Disabled - unnecessary GET call, WebSocket handles document updates
+    return
+  }, [])
+
+  // Removed useEffect that was calling refreshDocumentContent on every message
+  // WebSocket already provides document updates via wsCurrentDocument
 
   const documentToDisplay = wsCurrentDocument || currentDocument
 
@@ -562,6 +538,25 @@ function ChatPageContent() {
 
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white overflow-x-hidden">
+      {/* Loading Overlay - Show until page is ready */}
+      {!isPageReady && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a0a0a]/95 backdrop-blur-sm">
+          <div className="flex flex-col items-center justify-center space-y-6">
+            {/* Large Spinner */}
+            <div className="relative">
+              <div className="w-20 h-20 border-4 border-green-600/30 rounded-full"></div>
+              <div className="w-20 h-20 border-4 border-green-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+            </div>
+            
+            {/* Loading Text */}
+            <div className="flex flex-col items-center space-y-2">
+              <h2 className="text-xl font-semibold text-white">Loading chat...</h2>
+              <p className="text-sm text-gray-400">Please wait while we set everything up</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left Sidebar */}
       <ChatSidebar 
         user={user || undefined}

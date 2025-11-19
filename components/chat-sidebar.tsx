@@ -76,6 +76,8 @@ export const ChatSidebar = React.memo(function ChatSidebar({
   const [loadingProjectSessions, setLoadingProjectSessions] = useState<Set<string>>(new Set());
   const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const loadedProjectsRef = useRef<Set<string>>(new Set());
+  const loadingProjectsRef = useRef<Set<string>>(new Set());
 
   // Sync local state with context when context changes
   React.useEffect(() => {
@@ -102,6 +104,18 @@ export const ChatSidebar = React.memo(function ChatSidebar({
 
     if (!projectIdToExpand) return
 
+    // Prevent duplicate calls - check refs first
+    if (loadedProjectsRef.current.has(projectIdToExpand) || loadingProjectsRef.current.has(projectIdToExpand)) {
+      // Just expand if not already expanded
+      setExpandedProjects(prev => {
+        if (prev.has(projectIdToExpand!)) {
+          return prev
+        }
+        return new Set(prev).add(projectIdToExpand!)
+      })
+      return
+    }
+
     // Check if project is already expanded
     setExpandedProjects(prev => {
       if (prev.has(projectIdToExpand!)) {
@@ -110,41 +124,42 @@ export const ChatSidebar = React.memo(function ChatSidebar({
       return new Set(prev).add(projectIdToExpand!)
     })
 
-    // Load sessions if not already loaded
-    setProjectSessions(prev => {
-      if (prev.has(projectIdToExpand!)) {
-        return prev
-      }
-      
-      // Start loading
-      setLoadingProjectSessions(loading => new Set(loading).add(projectIdToExpand!))
-      
-      getProjectSessions(projectIdToExpand!, 1)
-        .then(response => {
-          const validSessions = response.results.filter(session => 
-            session.conversation_history && session.conversation_history.length > 0
-          )
-          const sessions = validSessions.map(session => ({
-            id: session.id,
-            title: session.proposal_title || session.initial_idea || 'Untitled Session'
-          }))
-          setProjectSessions(prev => new Map(prev).set(projectIdToExpand!, sessions))
+    // Check if sessions are already loaded in state
+    if (projectSessions.has(projectIdToExpand)) {
+      loadedProjectsRef.current.add(projectIdToExpand)
+      return
+    }
+
+    // Mark as loading
+    loadingProjectsRef.current.add(projectIdToExpand)
+    setLoadingProjectSessions(loading => new Set(loading).add(projectIdToExpand!))
+    
+    getProjectSessions(projectIdToExpand!, 1)
+      .then(response => {
+        const validSessions = response.results.filter(session => 
+          session.conversation_history && session.conversation_history.length > 0
+        )
+        const sessions = validSessions.map(session => ({
+          id: session.id,
+          title: session.proposal_title || session.initial_idea || 'Untitled Session'
+        }))
+        setProjectSessions(prev => new Map(prev).set(projectIdToExpand!, sessions))
+        loadedProjectsRef.current.add(projectIdToExpand!)
+      })
+      .catch(error => {
+        console.error('Error loading project sessions:', error)
+        setProjectSessions(prev => new Map(prev).set(projectIdToExpand!, []))
+        loadedProjectsRef.current.add(projectIdToExpand!)
+      })
+      .finally(() => {
+        loadingProjectsRef.current.delete(projectIdToExpand!)
+        setLoadingProjectSessions(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(projectIdToExpand!)
+          return newSet
         })
-        .catch(error => {
-          console.error('Error loading project sessions:', error)
-          setProjectSessions(prev => new Map(prev).set(projectIdToExpand!, []))
-        })
-        .finally(() => {
-          setLoadingProjectSessions(prev => {
-            const newSet = new Set(prev)
-            newSet.delete(projectIdToExpand!)
-            return newSet
-          })
-        })
-      
-      return prev
-    })
-  }, [activeSessionId, activeProjectId, allSessions])
+      })
+  }, [activeSessionId, activeProjectId, projectSessions, allSessions])
 
   // Close context menu when clicking outside
   React.useEffect(() => {

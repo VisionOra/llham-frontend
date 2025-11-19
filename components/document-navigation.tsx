@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo, useRef } from "react"
-import { ChevronLeft, ChevronRight, FileText } from "lucide-react"
+import { ChevronLeft, ChevronRight, FileText, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface Heading {
@@ -307,7 +307,7 @@ export function DocumentNavigation({
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-[#2a2a2a] bg-[#1a1a1a]/50 backdrop-blur-sm">
         <div className="flex items-center space-x-2">
-          <FileText className="w-4 h-4 text-green-400" />
+          <Menu className="w-4 h-4 text-green-400" />
           <h3 className="text-sm font-semibold text-white">Table of contents</h3>
         </div>
         {headings.length > 0 && (

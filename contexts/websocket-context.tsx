@@ -19,6 +19,7 @@ interface WebSocketContextType {
   initialIdea: string | null
   latestEditSuggestion: ChatMessage | null
   isTyping: boolean
+  setIsTyping: (typing: boolean) => void
   pendingMessage: string | null
   sendMessage: (type: string, message: string, pdfFiles: any[], documentContext?: string | null) => void
   sendRawMessage: (message: any) => boolean
@@ -779,6 +780,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     initialIdea,
     latestEditSuggestion,
     isTyping,
+    setIsTyping,
     pendingMessage,
     sendMessage,
     sendRawMessage,

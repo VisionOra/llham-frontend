@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { MainLayout } from "@/components/main-layout"
 import { useProjects } from "@/contexts/project-context"
@@ -51,37 +51,16 @@ function ProjectSessionsContent() {
 
   // Find the current project
   const currentProject = projects.find(p => p.id === projectId)
+  const loadedProjectIdRef = useRef<string | null>(null)
 
-  useEffect(() => {
-    if (currentProject) {
-      selectProject(currentProject)
-      loadProjectSessions()
-    }
-  }, [currentProject, projectId])
-
-  const loadProjectSessions = async () => {
+  const loadProjectSessions = useCallback(async () => {
     if (!projectId) return
     setLoadingSessions(true)
     try {
       const response = await getProjectSessions(projectId, pagination?.current_page || 1)
       setPagination(response.pagination)
-      // Clean up sessions with 0 messages
-      const sessionsToDelete: string[] = []
-      const validSessions = response.results.filter((session) => {
-        if (session.conversation_history.length === 0) {
-          sessionsToDelete.push(session.id)
-          return false
-        }
-        return true
-      })
-      for (const sessionId of sessionsToDelete) {
-        try {
-          await deleteSession(sessionId)
-        } catch (error) {
-          // Optionally handle error
-        }
-      }
-      const mappedSessions: LocalSession[] = validSessions.map((session) => ({
+      // Show all sessions, including those with empty conversation history
+      const mappedSessions: LocalSession[] = response.results.map((session) => ({
         id: session.id,
         project_id: session.project.id,
         title: session.proposal_title || session.initial_idea || 'Untitled Session',
@@ -97,13 +76,26 @@ function ProjectSessionsContent() {
         conversation_history: session.conversation_history,
         user: session.user
       }))
+      console.log("Loaded sessions:", mappedSessions.length, mappedSessions)
       setProjectSessions(mappedSessions)
+      loadedProjectIdRef.current = projectId
     } catch (error) {
+      console.error("Error loading project sessions:", error)
       setProjectSessions([])
     } finally {
       setLoadingSessions(false)
     }
-  }
+  }, [projectId, pagination?.current_page])
+
+  useEffect(() => {
+    if (projectId && loadedProjectIdRef.current !== projectId) {
+      if (currentProject) {
+        selectProject(currentProject)
+      }
+      loadProjectSessions()
+    }
+  }, [projectId, currentProject, selectProject, loadProjectSessions])
+
   const [loadingMore, setLoadingMore] = useState(false)
 
   const handleSessionSelect = (sessionId: string) => {
@@ -123,6 +115,9 @@ function ProjectSessionsContent() {
       }
       
       const newSession = await createSession(sessionData)
+      
+      // Reset loaded ref to force reload
+      loadedProjectIdRef.current = null
       
       // Reload sessions after creating new session
       await loadProjectSessions()
@@ -351,9 +346,8 @@ function ProjectSessionsContent() {
                         const nextPage = (pagination.current_page || 1) + 1
                         const response = await getProjectSessions(projectId, nextPage)
                         setPagination(response.pagination)
-                        // Clean up sessions with 0 messages
-                        const validSessions = response.results.filter((session) => session.conversation_history.length > 0)
-                        const mappedSessions: LocalSession[] = validSessions.map((session) => ({
+                        // Show all sessions, including those with empty conversation history
+                        const mappedSessions: LocalSession[] = response.results.map((session) => ({
                           id: session.id,
                           project_id: session.project.id,
                           title: session.proposal_title || session.initial_idea || 'Untitled Session',

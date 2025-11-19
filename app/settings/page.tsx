@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -108,6 +108,8 @@ const SettingsPage = () => {
   const { activeSessionId } = useWebSocket()
   const { user } = useAuth()
   const searchParams = useSearchParams()
+  const loadedAgentsSessionIdRef = useRef<string | null>(null)
+  const loadingAgentsRef = useRef(false)
 
   // Get project_id and session_id from URL params or context
   const projectIdFromUrl = searchParams.get('project_id') || searchParams.get('project')
@@ -182,7 +184,13 @@ const SettingsPage = () => {
   // Fetch available agents from registry
   // If activeSessionId exists, fetch agents for that session (shows selected status)
   useEffect(() => {
+    // Prevent duplicate calls
+    if (loadingAgentsRef.current || loadedAgentsSessionIdRef.current === activeSessionId) {
+      return
+    }
+
     const fetchAvailableAgents = async () => {
+      loadingAgentsRef.current = true
       setLoadingAgents(true)
       try {
         const response = await getAvailableAgents(activeSessionId || undefined)
@@ -198,12 +206,14 @@ const SettingsPage = () => {
           // If no session, clear selections
           setSelectedAgentNames([])
         }
+        loadedAgentsSessionIdRef.current = activeSessionId || null
       } catch (error) {
         console.error("Error fetching available agents:", error)
         setAvailableAgents([])
         setSelectedAgentNames([])
       } finally {
         setLoadingAgents(false)
+        loadingAgentsRef.current = false
       }
     }
 

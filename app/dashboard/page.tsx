@@ -7,7 +7,7 @@ import { ChatInterface } from "@/components/chat-interface"
 import { MainLayout } from "@/components/main-layout"
 import { useProjects } from "@/contexts/project-context"
 import { useAuth } from "@/contexts/auth-context"
-import { createProjectWithSession, type CreateProjectWithSessionRequest, communicateWithMasterAgent } from "@/lib/api"
+import { createProjectWithSession, type CreateProjectWithSessionRequest } from "@/lib/api"
 import { useWebSocket } from "@/contexts/websocket-context"
 
 
@@ -24,6 +24,7 @@ function DashboardContent() {
   const [showLoader, setShowLoader] = useState(false)
   const cleanupDoneRef = useRef(false)
   const pendingMessageChecked = useRef(false)
+  const isCreatingSessionRef = useRef(false)
 
   useEffect(() => {
     const cleanupEmptyProjects = async () => {
@@ -42,6 +43,12 @@ function DashboardContent() {
       return
     }
 
+    // Prevent duplicate calls
+    if (isCreatingSessionRef.current) {
+      return
+    }
+
+    isCreatingSessionRef.current = true
     setShowLoader(true)
     
     try {
@@ -54,44 +61,29 @@ function DashboardContent() {
       const newProject = response.project
       const newSession = response.session
 
-      // Call communicate API after project and session are created
-      try {
-        const communicateResponse = await communicateWithMasterAgent({
-          session_id: newSession.id,
-          project_id: newProject.id,
-          message: message.trim()
-        })
-        
-        // Store communicate response in sessionStorage to handle it on chat page
-        if (communicateResponse) {
-          sessionStorage.setItem('pendingCommunicateResponse', JSON.stringify({
-            message: communicateResponse.message,
-            proposal_html: communicateResponse.proposal_html,
-            proposal_title: communicateResponse.proposal_title,
-            session_id: communicateResponse.session_id
-          }))
-        }
-      } catch (communicateError) {
-        console.error("Error calling communicate API:", communicateError)
-        // Continue even if communicate API fails
-      }
-
-      // Store user message in sessionStorage to display it in chat
+      // Store user message and session info for chat interface
       sessionStorage.setItem('pendingMessage', message.trim())
       sessionStorage.setItem('pendingSessionId', newSession.id)
+      sessionStorage.setItem('pendingProjectId', newProject.id)
       
+      // Close loader and navigate immediately after createProjectWithSession completes
+      setShowLoader(false)
       router.push(`/chat/${newSession.id}?project=${newProject.id}`)
+      
+      // Note: communicateWithMasterAgent will be called in the chat interface
+      // to show the response there instead of waiting here
     } catch (error) {
       console.error("Error creating project:", error)
       sessionStorage.removeItem('pendingMessage')
       sessionStorage.removeItem('pendingSessionId')
-    } finally {
+      sessionStorage.removeItem('pendingProjectId')
       setShowLoader(false)
+      isCreatingSessionRef.current = false
     }
   }, [router, refreshProjects])
 
   useEffect(() => {
-    if (!isAuthenticated || pendingMessageChecked.current) return
+    if (!isAuthenticated || pendingMessageChecked.current || isCreatingSessionRef.current) return
     
     const pendingMessage = sessionStorage.getItem('pendingMessage')
     if (pendingMessage) {
@@ -115,7 +107,7 @@ function DashboardContent() {
             
             {/* Loading Text */}
             <div className="flex flex-col items-center space-y-2">
-              <h2 className="text-xl font-semibold text-white">Creating your project...</h2>
+              <h2 className="text-xl font-semibold text-white">Creating your session...</h2>
               <p className="text-sm text-gray-400">Please wait while we set everything up</p>
             </div>
           </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Search, X } from "lucide-react"
 import { getAvailableAgents, AvailableAgent } from "@/lib/api"
@@ -25,6 +25,8 @@ export const AgentSearchBar: React.FC<AgentSearchBarProps> = ({
   const [showResults, setShowResults] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
+  const loadedSessionIdRef = useRef<string | undefined>(undefined)
+  const loadingAgentsRef = useRef(false)
   
   // Check if user has free plan (default to free if not specified)
   const isFreePlan = user?.subscription_status !== "paid"
@@ -58,7 +60,13 @@ export const AgentSearchBar: React.FC<AgentSearchBarProps> = ({
 
   // Load agents when component mounts or sessionId changes
   useEffect(() => {
+    // Prevent duplicate calls
+    if (loadingAgentsRef.current || loadedSessionIdRef.current === sessionId) {
+      return
+    }
+
     const loadAgents = async () => {
+      loadingAgentsRef.current = true
       setLoading(true)
       setError(null)
       try {
@@ -72,12 +80,14 @@ export const AgentSearchBar: React.FC<AgentSearchBarProps> = ({
         
         setAgents(limitedAgents)
         setFilteredAgents(limitedAgents)
+        loadedSessionIdRef.current = sessionId
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load agents")
         setAgents([])
         setFilteredAgents([])
       } finally {
         setLoading(false)
+        loadingAgentsRef.current = false
       }
     }
 

@@ -536,36 +536,6 @@ export async function getDocumentContent(sessionId: string): Promise<any> {
   }
 }
 
-export async function getSessionHistory(sessionId: string): Promise<any> {
-  try {
-    const response = await projectApi.post(`/api/proposals/sessions/${sessionId}/resume/`);
-    return response.data;
-  } catch (error) {
-    
-    // If it's a redirect error, try the direct approach
-    if (error instanceof AxiosError && (error.code === 'ERR_TOO_MANY_REDIRECTS' || error.response?.status === 301 || error.response?.status === 308)) {
-      try {
-        const directResponse = await axios.post(`${API_BASE_URL}/api/proposals/sessions/${sessionId}/resume/`, {}, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${TokenManager.getAccessToken()}`,
-            'ngrok-skip-browser-warning': 'true',
-          },
-          timeout: 10000,
-        });
-        return directResponse.data;
-      } catch (directError) {
-        throw new Error("Failed to load session history. Please try again.");
-      }
-    }
-    
-    if (error instanceof Error && error.message.includes("session has expired")) {
-      throw error;
-    }
-    throw new Error("Failed to load session history. Please try again.");
-  }
-}
 
 /**
  * Request interface for communicating with the Master Agent.
@@ -763,6 +733,12 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 // Proposed HTML Response Interface
 export interface ProposedHtmlResponse {
+  conversation_history?: Array<{
+    role: string;
+    message: string;
+    timestamp: string;
+    message_hash?: string;
+  }>;
   session_id: string;
   project_id: string;
   proposal_title: string;
@@ -1263,7 +1239,17 @@ export interface EditProposedHtmlResponse {
     replace_all_mode?: boolean
   }
   edit_id?: string
+  edit_version?: number
+  operation?: string
   replacements_count?: number
+  sections_updated?: number
+  sections_targeted?: string[]
+  verification?: {
+    original_hash: string
+    updated_hash: string
+    success: boolean
+    message: string
+  }
   message: string
   diff_preview?: Array<{
     occurrence: number
