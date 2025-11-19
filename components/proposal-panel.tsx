@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { FileText, Edit, History, X, Save, Loader2 } from "lucide-react"
+import { FileText, Edit, History, X, Save, Loader2, Menu } from "lucide-react"
 import { getProposalEdits, type ProposalEdit } from "@/lib/api"
 import { DocumentNavigation } from "./document-navigation"
 import { useProposalEditor } from "./use-proposal-editor"
@@ -397,7 +397,7 @@ export function ProposalPanel({
               className="text-gray-300 hover:text-white hover:bg-gray-900 border-gray-800 flex-shrink-0 h-7 sm:h-7 px-3 sm:px-3 rounded-full"
               style={{ backgroundColor: '#0A0A0A' }}
             >
-              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5" />
+              <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5" />
               <span className="hidden sm:inline">Table of contents</span>
             </Button>
           </div>

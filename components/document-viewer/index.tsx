@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { FileText, X, Save } from "lucide-react"
+import { FileText, X, Save, Check, XCircle } from "lucide-react"
 import { DocumentViewerProps, EditableBlock } from './types'
 import { countCharacters, parseHTMLToBlocks, blocksToHTML } from './utils'
 import { useExportActions } from './use-export-actions'
@@ -389,18 +389,63 @@ export function DocumentViewer({
             <div className="overflow-y-auto flex-1 p-6">
               <p className="text-sm text-gray-300 mb-4">{editSuggestion.editData.reason}</p>
               <div className="space-y-3">
-                <div className="bg-[#0a0a0a] border border-red-900/30 rounded p-3">
-                  <div className="text-xs text-red-400 font-semibold mb-2">Original:</div>
-                  <div className="text-sm text-gray-300 whitespace-pre-wrap break-words">
-                    {stripHtmlTags(editSuggestion.editData.original)}
+                {/* Original Hash - Red */}
+                {editSuggestion.editData.verification?.original_hash && (
+                  <div className="bg-[#0a0a0a] border-2 border-red-500/50 rounded p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs text-red-400 font-semibold flex items-center gap-2">
+                        <XCircle className="w-4 h-4" />
+                        Original Hash:
+                      </div>
+                    </div>
+                    <div className="text-sm text-red-300 font-mono break-all">
+                      {editSuggestion.editData.verification.original_hash}
+                    </div>
+                    {editSuggestion.editData.original && (
+                      <div className="text-sm text-gray-300 whitespace-pre-wrap break-words mt-2 pt-2 border-t border-red-500/20">
+                        {stripHtmlTags(editSuggestion.editData.original)}
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="bg-[#0a0a0a] border border-green-900/30 rounded p-3">
-                  <div className="text-xs text-green-400 font-semibold mb-2">Proposed:</div>
-                  <div className="text-sm text-gray-300 whitespace-pre-wrap break-words">
-                    {stripHtmlTags(editSuggestion.editData.proposed)}
+                )}
+                
+                {/* Updated Hash - Green with Tick */}
+                {editSuggestion.editData.verification?.updated_hash && (
+                  <div className="bg-[#0a0a0a] border-2 border-green-500/50 rounded p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs text-green-400 font-semibold flex items-center gap-2">
+                        <Check className="w-4 h-4" />
+                        Updated Hash:
+                      </div>
+                    </div>
+                    <div className="text-sm text-green-300 font-mono break-all">
+                      {editSuggestion.editData.verification.updated_hash}
+                    </div>
+                    {editSuggestion.editData.proposed && (
+                      <div className="text-sm text-gray-300 whitespace-pre-wrap break-words mt-2 pt-2 border-t border-green-500/20">
+                        {stripHtmlTags(editSuggestion.editData.proposed)}
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
+                
+                {/* Fallback to original/proposed if no verification hashes */}
+                {!editSuggestion.editData.verification && (
+                  <>
+                    <div className="bg-[#0a0a0a] border border-red-900/30 rounded p-3">
+                      <div className="text-xs text-red-400 font-semibold mb-2">Original:</div>
+                      <div className="text-sm text-gray-300 whitespace-pre-wrap break-words">
+                        {stripHtmlTags(editSuggestion.editData.original)}
+                      </div>
+                    </div>
+                    <div className="bg-[#0a0a0a] border border-green-900/30 rounded p-3">
+                      <div className="text-xs text-green-400 font-semibold mb-2">Proposed:</div>
+                      <div className="text-sm text-gray-300 whitespace-pre-wrap break-words">
+                        {stripHtmlTags(editSuggestion.editData.proposed)}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             

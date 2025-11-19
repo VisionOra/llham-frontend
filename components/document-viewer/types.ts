@@ -19,6 +19,14 @@ export interface EditSuggestion {
     selected_context: boolean
     confidence: number
     edit_type: string
+    original_hash?: string
+    updated_hash?: string
+    verification?: {
+      original_hash: string
+      updated_hash: string
+      success: boolean
+      message: string
+    }
   }
   showAcceptReject?: boolean
 }
